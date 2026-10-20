@@ -17,6 +17,9 @@ def shorts_scroll_session(duration):
     sw, sh = _screen_size()
     log("Verification: Centering mouse on screen to ensure scrolling hits the browser.")
     human_mouse_move(sw // 2, sh // 2)
+    # Ensure viewport has keyboard focus instead of address bar
+    safe_press('esc')
+    time.sleep(0.5)
     start = time.time()
     
     while time.time() - start < duration and not state.is_stopped():
@@ -98,10 +101,12 @@ def task_browse_news(duration):
         else:
             hotkey('ctrl', 'l')
             time.sleep(0.3)
-            human_typing(next_url, wpm=95)
+            human_typing(next_url, wpm=95, typos=False)
             if not state.is_stopped():
                 safe_press('enter')
-                time.sleep(random.uniform(2.0, 4.0))
+                time.sleep(random.uniform(2.5, 4.5))
+                safe_press('esc')
+                time.sleep(0.4)
         
         current_url = next_url
         remaining = duration - (time.time() - start)
@@ -144,10 +149,12 @@ def task_browse_reddit(duration):
         else:
             hotkey('ctrl', 'l')
             time.sleep(0.3)
-            human_typing(next_url, wpm=90)
+            human_typing(next_url, wpm=90, typos=False)
             if not state.is_stopped():
                 safe_press('enter')
-                time.sleep(random.uniform(2.0, 4.0))
+                time.sleep(random.uniform(2.5, 4.5))
+                safe_press('esc')
+                time.sleep(0.4)
                 
         current_url = next_url
         remaining = duration - (time.time() - start)
@@ -191,10 +198,12 @@ def task_browse_explore(duration):
         else:
             hotkey('ctrl', 'l')
             time.sleep(0.3)
-            human_typing(next_url, wpm=90)
+            human_typing(next_url, wpm=90, typos=False)
             if not state.is_stopped():
                 safe_press('enter')
                 time.sleep(random.uniform(2.5, 4.5))
+                safe_press('esc')
+                time.sleep(0.4)
 
         current_url = next_url
         remaining = duration - (time.time() - start)

@@ -124,7 +124,7 @@ def _press_char(char):
     else:
         safe_write(char)
 
-def human_typing(text, wpm=65):
+def human_typing(text, wpm=65, typos=True):
     base_delay = 60.0 / (wpm * 5)
     burst_rem  = random.randint(2, 12)
     prev_char  = ''
@@ -155,7 +155,7 @@ def human_typing(text, wpm=65):
         pair = (prev_char + char).lower()
         bigram_mult = 0.55 if pair in FAST_BIGRAMS else 1.0
         
-        if (char.isalpha() and random.random() < 0.025
+        if (typos and char.isalpha() and random.random() < 0.025
                 and char.lower() in QWERTY_NEIGHBORS
                 and not state.is_stopped()):
             _press_char(random.choice(QWERTY_NEIGHBORS[char.lower()]))

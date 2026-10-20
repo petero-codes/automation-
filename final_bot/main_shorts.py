@@ -1,3 +1,11 @@
+import os
+import sys
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
+
 import ctypes
 import threading
 import time
@@ -11,9 +19,12 @@ from config.settings import IDLE_TIMEOUT
 from tasks.scheduler import Scheduler
 import tasks.web_tasks as web_tasks
 import tasks.system_tasks as sys_tasks
+from tasks.shared import detect_best_browser
 
-web_tasks.BROWSER_EXE = 'brave'
-web_tasks.BROWSER_TITLE = 'Brave'
+best_exe, best_title = detect_best_browser()
+web_tasks.BROWSER_EXE = best_exe
+web_tasks.BROWSER_TITLE = best_title
+log(f"Active Browser Target: {best_title} ({best_exe})")
 
 TASK_WEIGHTS = {
     web_tasks.task_watch_shorts:      4,

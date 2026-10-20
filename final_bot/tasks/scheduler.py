@@ -3,7 +3,7 @@ import random
 from core import state
 from core.logger import log
 from core.input_driver import emergency_cleanup
-from config.settings import TOTAL_RUNTIME
+from config.settings import TOTAL_RUNTIME, AUTO_LAUNCH_LOGGY
 
 class Scheduler:
     def __init__(self, task_weights):
@@ -22,6 +22,13 @@ class Scheduler:
         log('Idle threshold reached. Starting automation. (Double-tap ESC to yield)')
         start_time = time.time()
         consecutive_errors = 0
+
+        if AUTO_LAUNCH_LOGGY and not state.is_stopped():
+            try:
+                from core.loggy_manager import ensure_loggy_running
+                ensure_loggy_running()
+            except Exception as e:
+                log(f"[Loggy3] Note: {e}")
 
         while not state.is_stopped():
             if time.time() - start_time > TOTAL_RUNTIME:

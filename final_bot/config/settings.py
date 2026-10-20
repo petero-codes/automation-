@@ -1,8 +1,11 @@
 import os
+from pathlib import Path
 
+BASE_DIR = Path(__file__).resolve().parent.parent
 IDLE_TIMEOUT  = 120        # seconds idle before automation starts
 TOTAL_RUNTIME = 10 * 3600  # max runtime (10 hours)
-LOG_FILE      = 'idle_automation.log'
+LOG_FILE      = str(BASE_DIR / 'idle_automation.log')
+AUTO_LAUNCH_LOGGY = False  # Set to False: will NOT launch Loggy on startup, on ESC, or during 120s wait
 
 SHORTS_URL = 'www.youtube.com/shorts'
 
