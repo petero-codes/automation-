@@ -13,37 +13,35 @@ import time
 from core import state
 from core.logger import log
 from core.input_driver import init_driver, emergency_cleanup
-from core.killswitch import start_daemons, get_idle_time_ms
+from core.priority_engine import start_priority_engine, get_idle_time_ms
 from config.settings import IDLE_TIMEOUT
 
 from tasks.scheduler import Scheduler
 import tasks.web_tasks as web_tasks
 import tasks.system_tasks as sys_tasks
+from tasks.engineering_workload import task_software_engineering
+from tasks.financial_workload import task_financial_modeling
+from tasks.research_workload import task_technical_research
+from tasks.reading_jiggler import task_reading_mode, execute_reading_micro_scroll
 
 web_tasks.BROWSER_EXE = 'chrome'
 web_tasks.BROWSER_TITLE = 'Google Chrome'
 
 TASK_WEIGHTS = {
-    web_tasks.task_watch_shorts:      4,
-    web_tasks.task_read_wiki:         3,
-    web_tasks.task_browse_news:       3,
-    web_tasks.task_browse_reddit:     3,
-    web_tasks.task_browse_explore:    3,
-    web_tasks.task_read_novel:        2,
-    web_tasks.task_browse_github:     2,
-    sys_tasks.task_type_essay:        1,
+    task_software_engineering:       5,
+    task_financial_modeling:          5,
+    task_technical_research:         4,
+    task_reading_mode:               3,
     sys_tasks.task_view_task_manager: 1,
-    sys_tasks.task_terminal_ops:      1,
-    sys_tasks.task_ms_paint:          1,
-    sys_tasks.task_code_vscode:       2,
 }
 
 def monitor_idle():
-    log(f'Script ready. Waiting for {IDLE_TIMEOUT}s idle. Double-tap ESC to stop automation.')
+    log(f"[Nextgen Chrome] Waiting for {IDLE_TIMEOUT}s unbroken idle...")
     while True:
         time.sleep(0.5)
         if not state.automation_active.is_set():
             if get_idle_time_ms() >= IDLE_TIMEOUT * 1000:
+                execute_reading_micro_scroll()
                 state.clear_stop()
                 state.automation_active.set()
                 sched = Scheduler(TASK_WEIGHTS)
@@ -59,7 +57,7 @@ def _bind_to_interactive_desktop():
 def main():
     _bind_to_interactive_desktop()
     init_driver()
-    start_daemons()
+    start_priority_engine()
     try:
         monitor_idle()
     except KeyboardInterrupt:
