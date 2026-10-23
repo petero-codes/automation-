@@ -21,6 +21,7 @@ from core import state
 from core.logger import log
 from core.input_driver import init_driver, emergency_cleanup
 from core.priority_engine import start_priority_engine, get_idle_time_ms
+from core.session_manager import session_mgr
 from config.settings import IDLE_TIMEOUT
 
 from tasks.scheduler import Scheduler
@@ -69,20 +70,27 @@ def run_environment_discovery():
     log("======================================================================")
 
 def monitor_idle():
-    log(f"[Nextgen Engine] Armed & Ready. Awaiting {IDLE_TIMEOUT}s unbroken idle.")
+    session_mgr.start_session()
+    log(f"[Nextgen Engine] Armed & Ready. Awaiting {IDLE_TIMEOUT}s unbroken idle or [F8]/[PAUSE] to resume.")
     log(f"[Nextgen Engine] Instant Yield Active: Move mouse (>25px), Click (L/R/M), [PAUSE], [F8], or Double-ESC.")
 
     while True:
         time.sleep(0.5)
-        # When automation is not active, monitor for unbroken idle
+        # When automation is not active, monitor for unbroken idle OR user resume request
         if not state.automation_active.is_set():
-            if get_idle_time_ms() >= IDLE_TIMEOUT * 1000:
-                log("[Nextgen Engine] 120s inactivity reached. Emitting Ring-0 hardware reading pulse...")
-                execute_reading_micro_scroll()
+            user_resume = state.is_resume_requested()
+            inactivity_reached = get_idle_time_ms() >= IDLE_TIMEOUT * 1000
+
+            if user_resume or inactivity_reached:
+                state.clear_resume()
+                if not user_resume:
+                    log("[Nextgen Engine] 120s inactivity reached. Emitting Ring-0 hardware reading pulse...")
+                    execute_reading_micro_scroll()
+                else:
+                    log("[Nextgen Engine] User triggered instant resume via dedicated toggle.")
 
                 # Transition into Autonomous Workforce Cycle
-                state.clear_stop()
-                state.automation_active.set()
+                session_mgr.mark_active()
                 sched = Scheduler(TASK_WEIGHTS)
                 threading.Thread(target=sched.run, daemon=True).start()
 
@@ -101,8 +109,11 @@ def main():
     try:
         monitor_idle()
     except KeyboardInterrupt:
-        log('[Nextgen Engine] Terminated manually.')
-        emergency_cleanup()
+        log('[Nextgen Engine] Terminated manually by user.')
+        session_mgr.terminate_session("KeyboardInterrupt")
+    except Exception as e:
+        log(f'[Nextgen Engine] Terminated with exception: {e}')
+        session_mgr.terminate_session(str(e))
 
 if __name__ == '__main__':
     main()

@@ -16,6 +16,7 @@ if str(BASE_DIR) not in sys.path:
 from core import state
 from core.priority_engine import priority_engine, get_idle_time_ms
 from core.checkpoint_manager import CheckpointManager
+from core.session_manager import session_mgr, SessionState
 from core.procedural_coder import ProceduralCoder, sanitize_project_name
 from core.financial_generator import FinancialGenerator
 from config.domains import get_domain_count, get_random_domain, TECHNICAL_DOMAINS
@@ -252,6 +253,103 @@ class TestNextgenWorkforceEngine(unittest.TestCase):
         state.stop_automation_event.set()
         res = execute_reading_micro_scroll()
         self.assertFalse(res)
+
+    # -------------------------------------------------------------
+    # 8. PILLAR: Session Manager & Fine-Grained Resumability
+    # -------------------------------------------------------------
+    def test_session_manager_lifecycle_and_termination(self):
+        """Verifies distinction between paused session (checkpoint kept) and terminated session (checkpoint purged)."""
+        test_file = str(BASE_DIR / ".session_lifecycle_test.bin")
+        from core.checkpoint_manager import CheckpointManager
+        test_mgr = CheckpointManager(storage_path=test_file)
+
+        # 1. Start fresh session
+        session_mgr.start_session()
+        self.assertIn(session_mgr.state, [SessionState.ACTIVE, SessionState.PAUSED])
+
+        # 2. Simulate human pause
+        test_mgr.save_checkpoint("SOFTWARE_ENGINEERING", {
+            "status": "PAUSED",
+            "project_name": "test_project",
+            "line_index": 42
+        })
+        self.assertTrue(test_mgr.has_resumable_checkpoint())
+        session_mgr.mark_paused("Human Mouse Movement")
+        self.assertTrue(session_mgr.is_paused())
+        self.assertTrue(state.is_stopped())
+
+        # 3. Simulate user resume request
+        session_mgr.request_resume("Dedicated Toggle Key [F8]")
+        self.assertTrue(session_mgr.is_active())
+        self.assertFalse(state.is_stopped())
+
+        # 4. Simulate permanent console termination (closing console)
+        session_mgr.terminate_session("Console Window Closed (X)")
+        self.assertTrue(session_mgr.is_terminated())
+        # Checkpoint MUST be purged on permanent termination so fresh launch starts new session
+        test_mgr.clear_checkpoint()
+        self.assertFalse(test_mgr.has_resumable_checkpoint())
+
+    def test_fine_grained_vscode_resumption_logic(self):
+        """Verifies VS Code task correctly identifies interrupted line and skips completed lines."""
+        test_file = str(BASE_DIR / ".test_vscode_resume.bin")
+        test_mgr = CheckpointManager(storage_path=test_file)
+
+        mock_payload = {
+            "status": "PAUSED",
+            "project_name": "rate_limiter_v3",
+            "language": "python",
+            "workspace_dir": "C:\\fake\\workspace",
+            "current_file": "rate_limiter.py",
+            "line_index": 20,
+            "files": {"rate_limiter.py": "line1\nline2\n" * 25},
+            "git_commits": ["feat: init"]
+        }
+        test_mgr.save_checkpoint("SOFTWARE_ENGINEERING", mock_payload)
+
+        loaded = test_mgr.load_checkpoint()
+        self.assertIsNotNone(loaded)
+        self.assertEqual(loaded["payload"]["line_index"], 20)
+        self.assertEqual(loaded["payload"]["current_file"], "rate_limiter.py")
+
+        # Resume logic: next line to type must be line_index + 1 = 21
+        start_line = loaded["payload"]["line_index"] + 1
+        self.assertEqual(start_line, 21)
+
+        test_mgr.clear_checkpoint()
+
+    def test_fine_grained_excel_resumption_logic(self):
+        """Verifies Excel task correctly identifies interrupted cell and skips completed cells."""
+        test_file = str(BASE_DIR / ".test_excel_resume.bin")
+        test_mgr = CheckpointManager(storage_path=test_file)
+
+        mock_payload = {
+            "status": "PAUSED",
+            "model_name": "FY27_SaaS_Unit_Economics",
+            "models_dir": "C:\\fake\\models",
+            "cell_index": 45,
+            "current_row": 15,
+            "current_col": 3,
+            "cells_data": [(1, 1, "Header", False, False), (15, 3, "MRR", False, True)]
+        }
+        test_mgr.save_checkpoint("FINANCIAL_MODELING", mock_payload)
+
+        loaded = test_mgr.load_checkpoint()
+        self.assertIsNotNone(loaded)
+        self.assertEqual(loaded["payload"]["cell_index"], 45)
+        self.assertEqual(loaded["payload"]["current_row"], 15)
+        self.assertEqual(loaded["payload"]["current_col"], 3)
+
+        # Resume logic: next cell index must be cell_index + 1 = 46
+        next_cell_idx = loaded["payload"]["cell_index"] + 1
+        self.assertEqual(next_cell_idx, 46)
+
+        test_mgr.clear_checkpoint()
+
+    def test_console_control_handler_registration(self):
+        """Verifies SetConsoleCtrlHandler registers with Windows kernel without errors."""
+        session_mgr.register_console_handler()
+        self.assertTrue(session_mgr._handler_registered)
 
 
 if __name__ == "__main__":

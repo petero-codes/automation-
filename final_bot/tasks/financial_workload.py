@@ -11,6 +11,7 @@ from core.window_manager import focus_window_by_title, maximize_active_window, c
 from tasks.engineering_workload import navigate_explorer_address_bar
 from tasks.shared import is_excel_installed, get_excel_executable
 from core.financial_generator import FinancialGenerator, FinancialModel, FinancialCell
+from core.checkpoint_manager import checkpoint_mgr
 
 financial_gen = FinancialGenerator()
 
@@ -48,31 +49,64 @@ def _navigate_cell(curr: Tuple[int, int], target: Tuple[int, int]):
 def task_financial_modeling(duration: int) -> bool:
     r"""
     Autonomous Financial Modeling & Analysis Workload in Microsoft Excel:
-      - Checks installation; cleanly skips if Excel is missing
-      - Generates 50-90 dynamic rows across financial domains
-      - Procedural File Explorer address-bar launch into Desktop\Financial_Models
-      - Strict foreground window focus verification (zero blind typing)
-      - Enters data and live accounting formulas (=SUM, =AVERAGE, =IF, =VLOOKUP)
-      - Applies professional accounting borders and currency formatting
+      - Resumes from exact workbook and cell coordinate if previously paused by human.
+      - Checks installation; cleanly skips if Excel is missing.
+      - Generates 50-90 dynamic rows across financial domains.
+      - Procedural File Explorer address-bar launch into Desktop\Financial_Models.
+      - Strict foreground window focus verification (zero blind typing).
+      - Enters data and live accounting formulas (=SUM, =AVERAGE, =IF, =VLOOKUP).
+      - Applies professional accounting borders and currency formatting.
     """
     if not is_excel_installed():
         log("[Financial Modeling] Microsoft Excel is not installed on this system. Skipping workload cleanly.")
         return False
 
-    log("[Financial Modeling] Generating dynamic financial model...")
-    model: FinancialModel = financial_gen.generate_model()
-    log(f"[Financial Modeling] Active Model: {model.model_name} ({model.row_count} rows, {len(model.cells)} cells)")
+    # Check for an interrupted paused session checkpoint
+    cp = checkpoint_mgr.load_checkpoint()
+    is_resuming = (
+        cp is not None
+        and cp.get("workload") == "FINANCIAL_MODELING"
+        and cp.get("payload", {}).get("status") == "PAUSED"
+    )
 
-    user_profile = os.environ.get("USERPROFILE", "C:\\Users\\Default")
-    models_dir = os.path.join(user_profile, "Desktop", "Financial_Models")
-    try:
-        os.makedirs(models_dir, exist_ok=True)
-    except Exception as e:
-        log(f"[Financial Modeling] Directory note: {e}")
+    if is_resuming:
+        payload = cp["payload"]
+        model_name = payload["model_name"]
+        models_dir = payload["models_dir"]
+        resume_cell_idx = payload.get("cell_index", -1)
+        current_r = payload.get("current_row", 1)
+        current_c = payload.get("current_col", 1)
+        cells_data = payload.get("cells_data", [])
+        reconstructed_cells = [
+            FinancialCell(r, c, v, is_f, fmt_c)
+            for (r, c, v, is_f, fmt_c) in cells_data
+        ]
+        model = FinancialModel(
+            model_name=model_name,
+            domain="Financial Modeling",
+            row_count=len(reconstructed_cells),
+            cells=reconstructed_cells
+        )
+        log(f"[Resume Controller] Restoring interrupted Excel model: {model_name} at cell ({current_r}, {current_c}) [Index {resume_cell_idx + 1}]")
+    else:
+        log("[Financial Modeling] Generating dynamic financial model...")
+        model = financial_gen.generate_model()
+        resume_cell_idx = -1
+        current_r = 1
+        current_c = 1
+        log(f"[Financial Modeling] Active Model: {model.model_name} ({model.row_count} rows, {len(model.cells)} cells)")
+
+        user_profile = os.environ.get("USERPROFILE", "C:\\Users\\Default")
+        models_dir = os.path.join(user_profile, "Desktop", "Financial_Models")
+        try:
+            os.makedirs(models_dir, exist_ok=True)
+        except Exception as e:
+            log(f"[Financial Modeling] Directory note: {e}")
 
     start_time = time.time()
+    target_titles = ["Excel", "Microsoft Excel"]
 
-    # Step 1: Launch Excel via Procedural Explorer Address-Bar Navigation
+    # Step 1: Launch or Bring Forward Excel
     excel_exe = get_excel_executable()
     model_file = os.path.join(models_dir, f"{model.model_name}.xlsx")
     import shutil
@@ -83,13 +117,13 @@ def task_financial_modeling(duration: int) -> bool:
     else:
         excel_cmd = f'excel "{model.model_name}.xlsx"'
 
-    if not navigate_explorer_address_bar(models_dir, excel_cmd):
-        log("[Financial Modeling] Explorer navigation aborted or interrupted.")
-        return False
-    if state.is_stopped(): return False
+    if not is_resuming or not focus_window_by_title(target_titles):
+        if not navigate_explorer_address_bar(models_dir, excel_cmd):
+            log("[Financial Modeling] Explorer navigation aborted or interrupted.")
+            return False
+        if state.is_stopped(): return False
 
     # Step 2: Focus & Maximize Excel Window with strict verification
-    target_titles = ["Excel", "Microsoft Excel"]
     if not wait_for_window(target_titles, timeout=18):
         log("[Financial Modeling] Verification Failed: Excel window did not appear. Aborting safely.")
         close_app_safely()
@@ -103,16 +137,31 @@ def task_financial_modeling(duration: int) -> bool:
     maximize_active_window()
     time.sleep(random.uniform(1.0, 2.0))
 
-    # If opening a fresh Excel instance, select blank workbook
-    safe_press('enter')
-    time.sleep(random.uniform(0.8, 1.4))
+    if not is_resuming:
+        # If opening a fresh Excel instance, select blank workbook
+        safe_press('enter')
+        time.sleep(random.uniform(0.8, 1.4))
 
-    # Step 3: Populate Spreadsheet Grid with Human Cadence
-    current_pos = (1, 1)
+    # Step 3: Populate Spreadsheet Grid with Human Cadence & Fine-Grained Resumability
+    current_pos = (current_r, current_c)
+    start_cell_idx = resume_cell_idx + 1 if is_resuming else 0
 
-    for cell in model.cells:
+    for cell_idx in range(start_cell_idx, len(model.cells)):
+        cell = model.cells[cell_idx]
         if state.is_stopped() or time.time() - start_time >= duration:
-            break
+            # Interrupted: Checkpoint exact model, cell index, and (row, col) coordinate!
+            checkpoint_mgr.save_checkpoint("FINANCIAL_MODELING", {
+                "status": "PAUSED",
+                "model_name": model.model_name,
+                "models_dir": models_dir,
+                "cell_index": cell_idx,
+                "current_row": cell.row,
+                "current_col": cell.col,
+                "cells_data": [(c.row, c.col, c.value, c.is_formula, c.format_currency) for c in model.cells],
+                "interrupted_at": time.time(),
+            })
+            log(f"[Resume Controller] Checkpointed exact Excel position: {model.model_name} at cell ({cell.row}, {cell.col}) [Index {cell_idx + 1}]")
+            return False
 
         # Verify Excel is still in foreground before injecting inputs
         if not focus_window_by_title(target_titles):
@@ -125,7 +174,18 @@ def task_financial_modeling(duration: int) -> bool:
 
         # Type cell value / live formula
         human_typing(cell.value, wpm=random.randint(65, 95), typos=False)
-        if state.is_stopped(): break
+        if state.is_stopped():
+            checkpoint_mgr.save_checkpoint("FINANCIAL_MODELING", {
+                "status": "PAUSED",
+                "model_name": model.model_name,
+                "models_dir": models_dir,
+                "cell_index": cell_idx,
+                "current_row": cell.row,
+                "current_col": cell.col,
+                "cells_data": [(c.row, c.col, c.value, c.is_formula, c.format_currency) for c in model.cells],
+                "interrupted_at": time.time(),
+            })
+            return False
 
         # Submit cell entry (Enter moves down by 1 in Excel default settings)
         safe_press('enter')
@@ -134,7 +194,6 @@ def task_financial_modeling(duration: int) -> bool:
 
         # Format Currency if needed
         if cell.format_currency and random.random() < 0.25:
-            # Move back up to format
             safe_press('up')
             time.sleep(0.05)
             hotkey('ctrl', 'shift', '$')
@@ -144,7 +203,17 @@ def task_financial_modeling(duration: int) -> bool:
         # Natural cognitive review pause every 10-18 cells
         if cell.row % random.randint(10, 18) == 0 and cell.col == 1:
             if state.stop_automation_event.wait(random.uniform(1.2, 3.0)):
-                break
+                checkpoint_mgr.save_checkpoint("FINANCIAL_MODELING", {
+                    "status": "PAUSED",
+                    "model_name": model.model_name,
+                    "models_dir": models_dir,
+                    "cell_index": cell_idx,
+                    "current_row": cell.row,
+                    "current_col": cell.col,
+                    "cells_data": [(c.row, c.col, c.value, c.is_formula, c.format_currency) for c in model.cells],
+                    "interrupted_at": time.time(),
+                })
+                return False
 
     # Step 4: Apply Professional Formatting & Accounting Borders
     if not state.is_stopped() and time.time() - start_time < duration:
@@ -193,5 +262,9 @@ def task_financial_modeling(duration: int) -> bool:
             human_scroll('up', random.randint(2, 4))
             time.sleep(random.uniform(1.0, 2.0))
 
-    log("[Financial Modeling] Workload cycle complete.")
-    return True
+    if not state.is_stopped():
+        # Task completed end-to-end: clear checkpoint
+        checkpoint_mgr.clear_checkpoint()
+        log("[Financial Modeling] Workload cycle complete. Checkpoint cleared.")
+        return True
+    return False

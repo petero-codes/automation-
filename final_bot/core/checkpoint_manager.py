@@ -95,12 +95,18 @@ class CheckpointManager:
             return None
 
     def clear_checkpoint(self) -> None:
-        """Removes the checkpoint file upon task completion."""
+        """Removes the checkpoint file upon task completion or permanent session termination."""
         try:
             if os.path.exists(self.storage_path):
                 os.remove(self.storage_path)
+                log("[Checkpoint] Session checkpoint cleared.")
         except Exception as e:
             log(f"[Checkpoint] Error removing checkpoint: {e}")
+
+    def has_resumable_checkpoint(self) -> bool:
+        """Returns True if an encrypted checkpoint exists and is in PAUSED state."""
+        cp = self.load_checkpoint()
+        return bool(cp and cp.get("payload", {}).get("status") == "PAUSED")
 
 # Global singleton instance
 checkpoint_mgr = CheckpointManager()

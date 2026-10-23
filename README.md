@@ -79,18 +79,19 @@ python-automation/
 │
 ├── final_bot/                    # Nextgen Modular Bot Engine
 │   ├── main.py                   # Unified Nextgen Engine (Auto-discovery & dynamic workloads)
-│   ├── main_shorts.py            # Workload launcher
-│   ├── main_firefox.py           # Firefox targeted entry point
-│   ├── main_chrome.py            # Chrome targeted entry point
-│   ├── main_edge.py              # Edge targeted entry point
+│   ├── main_shorts.py            # Backward-compatible workload runner
+│   ├── main_firefox.py           # Backward-compatible Firefox targeted runner
+│   ├── main_chrome.py            # Backward-compatible Chrome targeted runner
+│   ├── main_edge.py              # Backward-compatible Edge targeted runner
 │   │
 │   ├── config/
 │   │   ├── domains.py            # 220+ curated technical and enterprise domains
 │   │   └── settings.py           # Timing, weights, and parameters
 │   │
 │   ├── core/
-│   │   ├── priority_engine.py    # Non-maskable IRQ 0 human priority hook (<30ms)
-│   │   ├── checkpoint_manager.py # Windows DPAPI encrypted session resumability
+│   │   ├── priority_engine.py    # Input Monitor & Priority Controller (<30ms IRQ 0)
+│   │   ├── session_manager.py    # Session Manager (Pause vs Console Close Termination)
+│   │   ├── checkpoint_manager.py # Checkpoint Manager (Windows DPAPI encryption)
 │   │   ├── procedural_coder.py   # High-entropy software engineering generator
 │   │   ├── financial_generator.py# 50-90 row Excel model generator with live formulas
 │   │   ├── human_physics.py      # Cubic Bezier mouse easing, typing flow, scroll
@@ -98,16 +99,28 @@ python-automation/
 │   │   └── window_manager.py     # Window focus & maximization
 │   │
 │   └── tasks/
-│       ├── engineering_workload.py# VS Code full-stack software development & Git
-│       ├── financial_workload.py  # Excel financial modeling & accounting formatting
+│       ├── engineering_workload.py# VS Code Resume Controller & line-level execution
+│       ├── financial_workload.py  # Excel Resume Controller & cell-level execution
 │       ├── research_workload.py   # 220+ domain technical web exploration
 │       ├── reading_jiggler.py     # Zero-drift subtle scroll reading jiggler
 │       ├── scheduler.py           # Weighted dynamic enterprise task scheduler
 │       └── shared.py              # Multi-tier app detection & browser utilities
 │
 └── tests/
-    └── test_nextgen_suite.py     # 14 comprehensive unit & integration tests
+    └── test_nextgen_suite.py     # 19 comprehensive unit & integration tests
 ```
+
+---
+
+## 🏛️ Verified 5-Component Architecture
+
+| Component | Source File | Responsibilities |
+| :--- | :--- | :--- |
+| **Input Monitor** | [`core/priority_engine.py`](file:///D:/projects/loggy/python-automation/final_bot/core/priority_engine.py) | Win32 low-level hooks (`WH_MOUSE_LL` & `WH_KEYBOARD_LL`) detecting mouse movement (`>25px`), clicks, dedicated keys (`[F8]`, `[PAUSE]`), and double-tap `[ESC]`. |
+| **Priority Controller** | [`core/priority_engine.py`](file:///D:/projects/loggy/python-automation/final_bot/core/priority_engine.py)<br>[`core/state.py`](file:///D:/projects/loggy/python-automation/final_bot/core/state.py) | Suspends automated input within `<30ms`, cleans hardware input state, and yields immediate priority to the user. |
+| **Checkpoint Manager** | [`core/checkpoint_manager.py`](file:///D:/projects/loggy/python-automation/final_bot/core/checkpoint_manager.py) | Encrypts session state with Windows DPAPI (`CryptProtectData`), saving exact code file/line or workbook/cell. |
+| **Resume Controller** | [`tasks/engineering_workload.py`](file:///D:/projects/loggy/python-automation/final_bot/tasks/engineering_workload.py)<br>[`tasks/financial_workload.py`](file:///D:/projects/loggy/python-automation/final_bot/tasks/financial_workload.py) | Restores interrupted VS Code line (`idx + 1`) or Excel cell (`cell_idx + 1`) without duplicating work or restarting tasks. |
+| **Session Manager** | [`core/session_manager.py`](file:///D:/projects/loggy/python-automation/final_bot/core/session_manager.py) | Distinguishes a **paused session** (checkpoint preserved) from a **permanently terminated session** (closing console purges checkpoint so next launch starts a fresh session). Manages user-decided resume via `[F8]` / `[PAUSE]`. |
 
 ---
 
@@ -117,4 +130,4 @@ To execute the unit and integration test suite:
 ```cmd
 .venv\Scripts\python.exe -m unittest tests/test_nextgen_suite.py
 ```
-* **Test Results**: 15/15 Tests Passing (Priority Engine, Zero-Drift Jiggler, Procedural Coder, Path Sanitization, Financial Generator, 220+ Domains, DPAPI Checkpoints, App Discovery, Dynamic Workload Pruning, Workload Skipping Guards, Dedicated Offline Coding & Excel Matrix).
+* **Test Results**: 19/19 Tests Passing (Priority Engine, Zero-Drift Jiggler, Procedural Coder, Path Sanitization, Financial Generator, 220+ Domains, DPAPI Checkpoints, App Discovery, Dynamic Workload Pruning, Workload Skipping Guards, Dedicated Offline Coding & Excel Matrix, Session Manager Lifecycle, Fine-Grained VS Code Resumption, Fine-Grained Excel Resumption, Console Control Handler).
