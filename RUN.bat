@@ -82,13 +82,7 @@ echo.
 
 cd /d "%PROJECT_ROOT%final_bot"
 
-set "TARGET_SCRIPT=main.py"
-if /i "%~1"=="firefox" set "TARGET_SCRIPT=main_firefox.py"
-if /i "%~1"=="chrome"  set "TARGET_SCRIPT=main_chrome.py"
-if /i "%~1"=="edge"    set "TARGET_SCRIPT=main_edge.py"
-if /i "%~1"=="shorts"  set "TARGET_SCRIPT=main_shorts.py"
-
-"%VENV_PY%" "%TARGET_SCRIPT%"
+"%VENV_PY%" "main.py"
 
 echo.
 echo Automation stopped. Press any key to exit.

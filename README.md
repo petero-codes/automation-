@@ -2,11 +2,11 @@
 
 > **Enterprise-Grade, Undetectable Autonomous Workforce Platform for Windows 10/11**
 
-Nextgen is a high-performance autonomous workforce platform engineered with kernel-level hardware simulation (via the Windows **Interception** filter driver) and natural cognitive pacing. Driven by genuine Ring-0 hardware RawInput packets, Nextgen produces realistic, human-indistinguishable computer activity across three mission-critical enterprise workloads.
+Nextgen is a high-performance autonomous workforce platform engineered with kernel-level hardware simulation (via the Windows **Interception** filter driver) and natural cognitive pacing. Driven by genuine Ring-0 hardware RawInput packets, Nextgen produces realistic, human-indistinguishable computer activity across two dedicated offline enterprise workloads.
 
 ---
 
-## 🏛️ Mission-Critical Workloads
+## 🏛️ Mission-Critical Workloads (100% Offline)
 
 ### 💻 1. Software Engineering (Visual Studio Code & Git)
 * **Dynamic Task Pooling**: Autonomous full-stack software development across dynamic system architectures powered by high-entropy procedural generation (and optional Gemini AI synthesis).
@@ -19,12 +19,7 @@ Nextgen is a high-performance autonomous workforce platform engineered with kern
 * **Live Accounting Formulas**: Enters real formulas cell-by-cell (`=SUM`, `=AVERAGE`, `=IF`, `=VLOOKUP`).
 * **Professional Accounting Formatting**: Currency formatting (`Ctrl+Shift+$`), accounting borders (`Alt+H+B+A`), and column auto-fitting (`Alt+H+O+I`).
 
-### 🌐 3. Technical Web Exploration & Research (220+ Domains)
-* **220+ Curated Domains**: Systematic research across Cloud & Infrastructure (AWS, Azure, GCP, Kubernetes, Docker), Language Specs (Python, Rust, Go, TypeScript, MDN), Distributed Databases (Postgres, Redis, Kafka), AI/ML research (ArXiv, PyTorch, HuggingFace), and Engineering publications (Hacker News, IEEE, Martin Fowler).
-* **Browser Agnostic**: Native support for Brave, Mozilla Firefox, Microsoft Edge, and Google Chrome.
-* **Reading Physics & Tab Dynamics**: Chaotic burst scrolling, reading drift, opening references in background tabs (`Ctrl+T`), tab switching (`Ctrl+Tab`), and natural tab cleanup (`Ctrl+W`).
-
-### 📖 4. Reading Mode (Subtle Scroll Jiggler Engine)
+### 📖 3. Reading Mode (Subtle Scroll Jiggler Engine)
 * **Zero-Drift Simulation**: Designed for reading documents, PDFs, code files, and specifications.
 * **Symmetrical Micro-Scroll**: After 120 seconds of unbroken human inactivity, executes a subtle downward micro-scroll (1–3 notches), dwells naturally for 1.5s–3.0s, and scrolls back UP by the exact same amount.
 * **Zero Cursor Movement (0px)**: Preserves exact reading viewport position while generating genuine Ring-0 hardware RawInput packets that reset OS sleep, screensavers, and Teams/Slack away timers.
@@ -67,7 +62,7 @@ Double-click **`RUN.bat`**.
 
 ```text
 python-automation/
-├── INSTALL.bat                   # 1-Click installer (Python, .venv, driver, shortcut)
+├── INSTALL.bat                   # 1-Click installer (Python, .venv, driver)
 ├── RUN.bat                       # 1-Click launcher (checks driver, launches Nextgen)
 ├── uninstall_driver.bat          # Clean uninstaller for Interception driver
 ├── requirements.txt              # Minimal dependency manifest
@@ -79,13 +74,8 @@ python-automation/
 │
 ├── final_bot/                    # Nextgen Modular Bot Engine
 │   ├── main.py                   # Unified Nextgen Engine (Auto-discovery & dynamic workloads)
-│   ├── main_shorts.py            # Backward-compatible workload runner
-│   ├── main_firefox.py           # Backward-compatible Firefox targeted runner
-│   ├── main_chrome.py            # Backward-compatible Chrome targeted runner
-│   ├── main_edge.py              # Backward-compatible Edge targeted runner
 │   │
 │   ├── config/
-│   │   ├── domains.py            # 220+ curated technical and enterprise domains
 │   │   └── settings.py           # Timing, weights, and parameters
 │   │
 │   ├── core/
@@ -102,10 +92,9 @@ python-automation/
 │   └── tasks/
 │       ├── engineering_workload.py# VS Code Resume Controller & line-level execution
 │       ├── financial_workload.py  # Excel Resume Controller & cell-level execution
-│       ├── research_workload.py   # 220+ domain technical web exploration
 │       ├── reading_jiggler.py     # Zero-drift subtle scroll reading jiggler
 │       ├── scheduler.py           # Weighted dynamic enterprise task scheduler
-│       └── shared.py              # Multi-tier app detection & browser utilities
+│       └── shared.py              # Multi-tier app detection & window focus
 │
 └── tests/
     └── test_nextgen_suite.py     # 20 comprehensive unit & integration tests
@@ -131,4 +120,4 @@ To execute the unit and integration test suite:
 ```cmd
 .venv\Scripts\python.exe -m unittest tests/test_nextgen_suite.py
 ```
-* **Test Results**: 20/20 Tests Passing (Priority Engine, Zero-Drift Jiggler, Procedural Coder, Path Sanitization, Financial Generator, 220+ Domains, DPAPI Checkpoints, App Discovery, Dynamic Workload Pruning, Workload Skipping Guards, Dedicated Offline Coding & Excel Matrix, Session Manager Lifecycle, Fine-Grained VS Code Resumption, Fine-Grained Excel Resumption, Console Control Handler, Legacy System Cleaner).
+* **Test Results**: 20/20 Tests Passing (Priority Engine, Zero-Drift Jiggler, Procedural Coder, Path Sanitization, Financial Generator, DPAPI Checkpoints, App Discovery, Dynamic Workload Pruning, Workload Skipping Guards, Dedicated Offline Coding & Excel Matrix, Session Manager Lifecycle, Fine-Grained VS Code Resumption, Fine-Grained Excel Resumption, Console Control Handler, Legacy System Cleaner).

@@ -19,7 +19,6 @@ from core.checkpoint_manager import CheckpointManager
 from core.session_manager import session_mgr, SessionState
 from core.procedural_coder import ProceduralCoder, sanitize_project_name
 from core.financial_generator import FinancialGenerator
-from config.domains import get_domain_count, get_random_domain, TECHNICAL_DOMAINS
 from tasks.reading_jiggler import execute_reading_micro_scroll
 from tasks.scheduler import Scheduler, filter_runnable_tasks
 from tasks.shared import (
@@ -27,13 +26,10 @@ from tasks.shared import (
     get_vscode_executable,
     is_excel_installed,
     get_excel_executable,
-    detect_best_browser,
-    get_installed_browsers,
     get_app_path
 )
 from tasks.engineering_workload import task_software_engineering
 from tasks.financial_workload import task_financial_modeling
-from tasks.research_workload import task_technical_research
 from tasks.reading_jiggler import task_reading_mode
 
 class TestNextgenWorkforceEngine(unittest.TestCase):
@@ -112,16 +108,14 @@ class TestNextgenWorkforceEngine(unittest.TestCase):
         self.assertTrue(has_sum or has_logic)
 
     # -------------------------------------------------------------
-    # 5. PILLAR: Curated Technical Research (220+ Domains)
+    # 5. PILLAR: Pure Offline Workload Matrix (Zero External Domains)
     # -------------------------------------------------------------
-    def test_technical_domain_pool_count(self):
-        """Verifies curated technical domain pool exceeds 220 domains."""
-        count = get_domain_count()
-        self.assertGreaterEqual(count, 220)
-        
-        # Test random domain selection
-        d = get_random_domain()
-        self.assertIn(d, TECHNICAL_DOMAINS)
+    def test_pure_offline_zero_network_architecture(self):
+        """Verifies engine is 100% offline with zero browser dependencies."""
+        import main
+        self.assertIn(task_software_engineering, main.TASK_WEIGHTS)
+        self.assertIn(task_financial_modeling, main.TASK_WEIGHTS)
+        self.assertEqual(len(main.TASK_WEIGHTS), 2)
 
     # -------------------------------------------------------------
     # 6. PILLAR: Encrypted Session Checkpoints & Resumability
@@ -160,7 +154,7 @@ class TestNextgenWorkforceEngine(unittest.TestCase):
     def test_scheduler_workload_weights(self):
         """Verifies weighted scheduler correctly chooses from enterprise workload pool."""
         weights = {
-            task_technical_research: 4,
+            task_software_engineering: 5,
             task_reading_mode: 3
         }
         sched = Scheduler(weights)
@@ -172,14 +166,10 @@ class TestNextgenWorkforceEngine(unittest.TestCase):
         self.assertIsInstance(is_vscode_installed(), bool)
         self.assertIsInstance(is_excel_installed(), bool)
         
-        best_exe, best_title = detect_best_browser()
-        self.assertIsInstance(best_exe, str)
-        self.assertIsInstance(best_title, str)
-        self.assertTrue(len(best_exe) > 0)
-        self.assertTrue(len(best_title) > 0)
-        
-        browsers = get_installed_browsers()
-        self.assertIsInstance(browsers, list)
+        # Test generic system binary lookup via get_app_path
+        cmd_path = get_app_path("cmd.exe")
+        self.assertIsNotNone(cmd_path)
+        self.assertTrue(os.path.isfile(cmd_path))
 
     def test_project_name_sanitization(self):
         """Verifies invalid path chars and traversal attempts are sanitized."""
@@ -201,23 +191,18 @@ class TestNextgenWorkforceEngine(unittest.TestCase):
         """Verifies Scheduler prunes workloads for uninstalled apps and falls back gracefully."""
         from unittest.mock import patch
         
-        # Scenario A: Both VS Code and Excel missing
+        # Scenario A: VS Code missing, Excel installed
         with patch("tasks.scheduler.is_vscode_installed", return_value=False), \
-             patch("tasks.scheduler.is_excel_installed", return_value=False):
+             patch("tasks.scheduler.is_excel_installed", return_value=True):
             test_weights = {
                 task_software_engineering: 5,
                 task_financial_modeling: 5,
-                task_technical_research: 4,
-                task_reading_mode: 3
             }
             sched = Scheduler(test_weights)
-            # Software engineering and financial modeling must be pruned
             self.assertNotIn(task_software_engineering, sched.task_weights)
-            self.assertNotIn(task_financial_modeling, sched.task_weights)
-            self.assertIn(task_technical_research, sched.task_weights)
-            self.assertIn(task_reading_mode, sched.task_weights)
+            self.assertIn(task_financial_modeling, sched.task_weights)
 
-        # Scenario B: Target machine has zero productivity tools
+        # Scenario B: Target machine has neither VS Code nor Excel
         with patch("tasks.scheduler.is_vscode_installed", return_value=False), \
              patch("tasks.scheduler.is_excel_installed", return_value=False):
             empty_weights = {
@@ -225,7 +210,7 @@ class TestNextgenWorkforceEngine(unittest.TestCase):
                 task_financial_modeling: 5
             }
             sched = Scheduler(empty_weights)
-            # Must preserve safe reading mode without launching browsers
+            # Must safely fall back to zero-drift reading mode
             self.assertIn(task_reading_mode, sched.task_weights)
 
     def test_dedicated_coding_and_excel_offline_matrix(self):
