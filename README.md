@@ -58,7 +58,8 @@ Windows requires a one-time reboot for the kernel driver to bind to hardware mou
 ### Step 3: Run the Workforce Engine
 Double-click **`RUN.bat`** (or your desktop shortcut).
 * Verifies kernel driver is loaded and active.
-* Automatically auto-detects your installed browser.
+* Automatically auto-detects all installed software (VS Code, Microsoft Excel, Browsers).
+* Dynamically tailors the workload matrix: automatically runs installed applications, skips uninstalled ones cleanly, and falls back gracefully to Browser Research and Reading Mode.
 * Awaits 120s of human inactivity, triggers the subtle reading jiggler, and commences autonomous workforce operations.
 
 ---
@@ -78,7 +79,8 @@ python-automation/
 │   └── library/                  # x64 & x86 C/C++ libraries
 │
 ├── final_bot/                    # Nextgen Modular Bot Engine
-│   ├── main_shorts.py            # Primary entry point (Auto-detects browser)
+│   ├── main.py                   # Unified Nextgen Engine (Auto-discovery & dynamic workloads)
+│   ├── main_shorts.py            # Workload launcher
 │   ├── main_firefox.py           # Firefox targeted entry point
 │   ├── main_chrome.py            # Chrome targeted entry point
 │   ├── main_edge.py              # Edge targeted entry point
@@ -101,10 +103,11 @@ python-automation/
 │       ├── financial_workload.py  # Excel financial modeling & accounting formatting
 │       ├── research_workload.py   # 220+ domain technical web exploration
 │       ├── reading_jiggler.py     # Zero-drift subtle scroll reading jiggler
-│       └── scheduler.py           # Weighted enterprise task scheduler
+│       ├── scheduler.py           # Weighted dynamic enterprise task scheduler
+│       └── shared.py              # Multi-tier app detection & browser utilities
 │
 └── tests/
-    └── test_nextgen_suite.py     # 9 comprehensive unit & integration tests
+    └── test_nextgen_suite.py     # 14 comprehensive unit & integration tests
 ```
 
 ---
@@ -115,4 +118,4 @@ To execute the unit and integration test suite:
 ```cmd
 .venv\Scripts\python.exe -m unittest tests/test_nextgen_suite.py
 ```
-* **Test Results**: 9/9 Tests Passing (Priority Engine, Zero-Drift Jiggler, Procedural Coder, Financial Generator, 220+ Domains, DPAPI Checkpoints, Scheduler Weights).
+* **Test Results**: 14/14 Tests Passing (Priority Engine, Zero-Drift Jiggler, Procedural Coder, Path Sanitization, Financial Generator, 220+ Domains, DPAPI Checkpoints, App Discovery, Dynamic Workload Pruning, Workload Skipping Guards).

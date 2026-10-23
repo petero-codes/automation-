@@ -1,18 +1,52 @@
 import time
 import random
+from typing import Dict, Any, Callable
 from core import state
 from core.logger import log
 from core.input_driver import emergency_cleanup
 from core.checkpoint_manager import checkpoint_mgr
 from config.settings import TOTAL_RUNTIME, AUTO_LAUNCH_LOGGY
+from tasks.shared import is_vscode_installed, is_excel_installed
+
+def is_task_runnable(task: Callable) -> bool:
+    """Verifies whether the target application for a workload is installed."""
+    name = getattr(task, '__name__', str(task))
+    if 'software_engineering' in name or 'vscode' in name:
+        return is_vscode_installed()
+    if 'financial' in name or 'excel' in name:
+        return is_excel_installed()
+    return True
+
+def filter_runnable_tasks(task_weights: Dict[Callable, int]) -> Dict[Callable, int]:
+    """Prunes workloads whose required applications are missing on the host machine."""
+    runnable = {}
+    for task, weight in task_weights.items():
+        if is_task_runnable(task):
+            runnable[task] = weight
+        else:
+            name = getattr(task, '__name__', str(task))
+            log(f"[Scheduler] Skipping unavailable workload: {name} (application not installed)")
+
+    if not runnable:
+        log("[Scheduler] All requested workloads unavailable. Falling back to Browser Research, Reading Mode, and System Diagnostics.")
+        from tasks.research_workload import task_technical_research
+        from tasks.reading_jiggler import task_reading_mode
+        import tasks.system_tasks as sys_tasks
+        runnable = {
+            task_technical_research: 4,
+            task_reading_mode: 3,
+            sys_tasks.task_view_task_manager: 1,
+        }
+
+    return runnable
 
 class Scheduler:
     """
     Enterprise Task Scheduler with Non-Maskable IRQ 0 yield handling,
-    encrypted session resumability, and weighted workload selection.
+    encrypted session resumability, and dynamic hardware/software workload selection.
     """
-    def __init__(self, task_weights):
-        self.task_weights = task_weights
+    def __init__(self, task_weights: Dict[Callable, int]):
+        self.task_weights = filter_runnable_tasks(task_weights)
         self._last_task = None
 
     def pick_next_task(self):
@@ -56,9 +90,12 @@ class Scheduler:
             checkpoint_mgr.save_checkpoint(task_name, {"duration": dur, "start_time": time.time()})
 
             try:
-                task(dur)
+                result = task(dur)
                 consecutive_errors = 0
                 checkpoint_mgr.clear_checkpoint()
+                if result is False:
+                    log(f"[Scheduler] Workload {task_name} skipped or yielded early. Advancing to next workload.")
+                    continue
             except Exception as e:
                 log(f"[Scheduler] Exception in {task_name}: {e}")
                 consecutive_errors += 1
@@ -69,6 +106,7 @@ class Scheduler:
                     consecutive_errors = 0
                 else:
                     time.sleep(2.0)
+                continue
 
             if state.is_stopped():
                 log("[Scheduler] Human yield signal acknowledged. Checkpointed active state.")

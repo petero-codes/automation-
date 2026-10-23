@@ -9,6 +9,7 @@ from core.input_driver import hotkey, safe_press, safe_write
 from core.human_physics import human_typing, human_mouse_move, human_scroll, active_wait
 from core.window_manager import focus_window_by_title, maximize_active_window, close_app_safely, wait_for_window
 from core.procedural_coder import ProceduralCoder, CodingTask
+from tasks.shared import is_vscode_installed, get_vscode_executable
 
 coder_instance = ProceduralCoder()
 
@@ -57,15 +58,21 @@ def navigate_explorer_address_bar(target_path: str, command_to_run: str = "code 
 
     return True
 
-def task_software_engineering(duration: int):
+def task_software_engineering(duration: int) -> bool:
     """
     Autonomous Software Engineering Workload in Visual Studio Code:
+      - Checks installation; cleanly skips if VS Code is missing
       - Procedural Task Pooling (dynamic multi-architecture code generation)
       - Procedural File Explorer address-bar launch
+      - Strict foreground window focus verification (zero blind typing)
       - Variable typing cadence (65-95 WPM) with code review pauses
       - Multi-tab navigation & line review
       - Integrated terminal git staging workflow
     """
+    if not is_vscode_installed():
+        log("[Software Engineering] VS Code is not installed on this system. Skipping workload cleanly.")
+        return False
+
     log(f"[Software Engineering] Generating dynamic task architecture...")
     task: CodingTask = coder_instance.generate_task()
     log(f"[Software Engineering] Task active: {task.project_name} ({task.language})")
@@ -81,15 +88,31 @@ def task_software_engineering(duration: int):
     start_time = time.time()
 
     # Step 1: Launch via Procedural Explorer Navigation
-    navigate_explorer_address_bar(workspace_dir, "code .")
-    if state.is_stopped(): return
+    vscode_exe = get_vscode_executable()
+    import shutil
+    if shutil.which("code"):
+        command_to_run = "code ."
+    elif vscode_exe:
+        command_to_run = f'"{vscode_exe}" "{workspace_dir}"'
+    else:
+        command_to_run = "code ."
 
-    # Step 2: Focus & Maximize VS Code
-    if not wait_for_window("Visual Studio Code", timeout=18):
-        log("[Software Engineering] Notice: Waiting for VS Code UI...")
-        time.sleep(2.0)
+    if not navigate_explorer_address_bar(workspace_dir, command_to_run):
+        log("[Software Engineering] Explorer navigation aborted or interrupted.")
+        return False
+    if state.is_stopped(): return False
 
-    focus_window_by_title("Visual Studio Code")
+    # Step 2: Focus & Maximize VS Code with strict verification
+    target_titles = ["Visual Studio Code", "Code"]
+    if not wait_for_window(target_titles, timeout=18):
+        log("[Software Engineering] Verification Failed: VS Code window did not appear. Aborting safely.")
+        close_app_safely()
+        return False
+
+    if not focus_window_by_title(target_titles):
+        log("[Software Engineering] Verification Failed: Could not focus VS Code window. Aborting safely.")
+        return False
+
     time.sleep(0.6)
     maximize_active_window()
     time.sleep(random.uniform(1.0, 2.0))
@@ -98,6 +121,11 @@ def task_software_engineering(duration: int):
     for filename, code_content in task.files.items():
         if state.is_stopped() or time.time() - start_time >= duration:
             break
+
+        # Verify VS Code is still the foreground window before any typing
+        if not focus_window_by_title(target_titles):
+            log("[Software Engineering] VS Code window lost focus. Halting keystroke injection.")
+            return False
 
         log(f"[Software Engineering] Editing file: {filename}")
         hotkey('ctrl', 'n') # New tab in VS Code
@@ -155,6 +183,10 @@ def task_software_engineering(duration: int):
     # Step 4: Terminal Git Staging Workflow
     remaining = duration - (time.time() - start_time)
     if remaining > 20 and not state.is_stopped():
+        if not focus_window_by_title(target_titles):
+            log("[Software Engineering] VS Code not focused for terminal. Aborting.")
+            return False
+
         log("[Software Engineering] Opening integrated terminal for Git staging...")
         hotkey('ctrl', '`') # Toggle integrated terminal
         time.sleep(random.uniform(1.5, 2.5))
@@ -179,3 +211,4 @@ def task_software_engineering(duration: int):
             time.sleep(0.5)
 
     log("[Software Engineering] Workload cycle complete.")
+    return True

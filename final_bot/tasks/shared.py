@@ -1,5 +1,6 @@
 import time
 import random
+from typing import Optional, Tuple, List
 from core import state
 from core.logger import log
 from core.input_driver import hotkey, safe_press
@@ -10,16 +11,128 @@ import winreg
 import shutil
 import os
 
-SUPPORTED_BROWSERS = ['Brave', 'Firefox', 'Chrome', 'Edge']
+SUPPORTED_BROWSERS = ['Brave', 'Firefox', 'Chrome', 'Edge', 'Microsoft Edge', 'Google Chrome']
 
-def detect_best_browser():
-    """Detects which supported browser is installed on the machine."""
-    candidates = [
-        ('brave', 'Brave', ['Brave']),
-        ('chrome', 'Google Chrome', ['Google Chrome', 'Chrome']),
-        ('firefox', 'Firefox', ['Firefox']),
-        ('msedge', 'Edge', ['Microsoft Edge', 'Edge']),
-    ]
+VSCODE_PATHS = [
+    r"%LOCALAPPDATA%\Programs\Microsoft VS Code\Code.exe",
+    r"%ProgramFiles%\Microsoft VS Code\Code.exe",
+    r"%ProgramFiles(x86)%\Microsoft VS Code\Code.exe",
+]
+
+EXCEL_PATHS = [
+    r"%ProgramFiles%\Microsoft Office\root\Office16\EXCEL.EXE",
+    r"%ProgramFiles(x86)%\Microsoft Office\root\Office16\EXCEL.EXE",
+    r"%ProgramFiles%\Microsoft Office\Office16\EXCEL.EXE",
+    r"%ProgramFiles(x86)%\Microsoft Office\Office16\EXCEL.EXE",
+    r"%ProgramFiles%\Microsoft Office\Office15\EXCEL.EXE",
+    r"%ProgramFiles(x86)%\Microsoft Office\Office15\EXCEL.EXE",
+]
+
+BROWSER_CANDIDATES = [
+    ('brave', 'Brave', ['Brave'], [
+        r"%ProgramFiles%\BraveSoftware\Brave-Browser\Application\brave.exe",
+        r"%ProgramFiles(x86)%\BraveSoftware\Brave-Browser\Application\brave.exe",
+        r"%LOCALAPPDATA%\BraveSoftware\Brave-Browser\Application\brave.exe",
+    ]),
+    ('chrome', 'Google Chrome', ['Google Chrome', 'Chrome'], [
+        r"%ProgramFiles%\Google\Chrome\Application\chrome.exe",
+        r"%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe",
+        r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe",
+    ]),
+    ('firefox', 'Firefox', ['Firefox'], [
+        r"%ProgramFiles%\Mozilla Firefox\firefox.exe",
+        r"%ProgramFiles(x86)%\Mozilla Firefox\firefox.exe",
+    ]),
+    ('msedge', 'Microsoft Edge', ['Microsoft Edge', 'Edge'], [
+        r"%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe",
+        r"%ProgramFiles%\Microsoft\Edge\Application\msedge.exe",
+    ]),
+]
+
+def get_app_path(exe_name: str, standard_paths: Optional[List[str]] = None) -> Optional[str]:
+    """
+    Multi-tier discovery for Windows executables:
+      1. System PATH via shutil.which
+      2. Windows Registry App Paths (HKCU and HKLM, 32-bit and 64-bit views)
+      3. Standard ProgramFiles / LocalAppData install directories
+    """
+    # 1. System PATH
+    p = shutil.which(exe_name)
+    if p and os.path.isfile(p):
+        return os.path.abspath(p)
+
+    # 2. Windows Registry App Paths
+    for root in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+        for subkey in (
+            rf"Software\Microsoft\Windows\CurrentVersion\App Paths\{exe_name}",
+            rf"Software\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths\{exe_name}",
+        ):
+            try:
+                with winreg.OpenKey(root, subkey) as k:
+                    val, _ = winreg.QueryValueEx(k, "")
+                    if val:
+                        cleaned = val.strip('\"\'')
+                        if os.path.isfile(cleaned):
+                            return os.path.abspath(cleaned)
+            except OSError:
+                pass
+
+    # 3. Standard paths
+    if standard_paths:
+        for sp in standard_paths:
+            expanded = os.path.expandvars(sp)
+            if os.path.isfile(expanded):
+                return os.path.abspath(expanded)
+
+    return None
+
+def is_vscode_installed() -> bool:
+    """Verifies whether Visual Studio Code is present on this machine."""
+    return get_vscode_executable() is not None
+
+def get_vscode_executable() -> Optional[str]:
+    """Returns absolute path or command for VS Code executable if installed."""
+    reg_or_file = get_app_path("Code.exe", VSCODE_PATHS)
+    if reg_or_file:
+        return reg_or_file
+    for alias in ("code.cmd", "code.exe", "code"):
+        w = shutil.which(alias)
+        if w:
+            return os.path.abspath(w)
+    return None
+
+def is_excel_installed() -> bool:
+    """Verifies whether Microsoft Excel is present on this machine."""
+    return get_excel_executable() is not None
+
+def get_excel_executable() -> Optional[str]:
+    """Returns absolute path or command for Microsoft Excel executable if installed."""
+    reg_or_file = get_app_path("excel.exe", EXCEL_PATHS)
+    if reg_or_file:
+        return reg_or_file
+    for alias in ("excel.exe", "excel"):
+        w = shutil.which(alias)
+        if w:
+            return os.path.abspath(w)
+    return None
+
+def get_installed_browsers() -> List[Tuple[str, str, str]]:
+    """Returns a list of (browser_id, display_title, exe_path) for all installed browsers."""
+    installed = []
+    for exe_id, title, _, paths in BROWSER_CANDIDATES:
+        exe_file = f"{exe_id}.exe"
+        resolved = get_app_path(exe_file, paths) or shutil.which(exe_id)
+        if resolved:
+            installed.append((exe_id, title, resolved))
+    return installed
+
+def detect_best_browser() -> Tuple[str, str]:
+    """Detects which supported browser is installed on the machine with automatic fallback."""
+    installed = get_installed_browsers()
+    if installed:
+        return installed[0][0], installed[0][1]
+
+    # Fallback to StartMenuInternet registry check
     installed_keys = []
     for root in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
         try:
@@ -34,14 +147,12 @@ def detect_best_browser():
         except Exception:
             pass
 
-    for exe_name, title, key_matches in candidates:
+    for exe_name, title, key_matches, _ in BROWSER_CANDIDATES:
         for k in installed_keys:
             if any(m.lower() in k for m in key_matches):
                 return exe_name, title
-        if shutil.which(exe_name):
-            return exe_name, title
 
-    return 'msedge', 'Edge'
+    return 'msedge', 'Microsoft Edge'
 
 def open_app_via_run(app_name):
     try:
@@ -65,8 +176,9 @@ def open_browser(browser_exe='brave', browser_title='Brave'):
         return
 
     detected_exe, detected_title = detect_best_browser()
-    actual_exe = browser_exe if shutil.which(browser_exe) else detected_exe
-    actual_title = browser_title if actual_exe == browser_exe else detected_title
+    requested_installed = get_app_path(f"{browser_exe}.exe") or shutil.which(browser_exe)
+    actual_exe = browser_exe if requested_installed else detected_exe
+    actual_title = browser_title if requested_installed else detected_title
 
     try:
         log(f"Verification: Browser not found. Launching '{actual_exe}' via Start menu.")

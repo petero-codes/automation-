@@ -1,11 +1,18 @@
 import os
 import random
 import json
+import re
 from dataclasses import dataclass
 from typing import List, Dict, Optional
 import urllib.request
 import urllib.error
 from core.logger import log
+
+def sanitize_project_name(name: str) -> str:
+    """Sanitizes a project name to ensure it is a valid, safe Windows directory name."""
+    cleaned = re.sub(r'[^a-zA-Z0-9_\-]', '_', str(name).strip())
+    cleaned = re.sub(r'_+', '_', cleaned).strip('_')
+    return cleaned if cleaned else f"project_{random.randint(1000, 9999)}"
 
 @dataclass
 class CodingTask:
@@ -244,7 +251,7 @@ class ProceduralCoder:
         # 2. High-Entropy Procedural Synthesis
         selected = random.choice(PROJECT_ARCHITECTURES)
         version_suffix = f"v{random.randint(1, 9)}_{random.randint(10, 99)}"
-        name = f"{selected['domain']}_{version_suffix}"
+        name = sanitize_project_name(f"{selected['domain']}_{version_suffix}")
         
         return CodingTask(
             project_name=name,
@@ -283,8 +290,9 @@ class ProceduralCoder:
                 raw_text = raw_text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
             parsed = json.loads(raw_text)
             
+            raw_project_name = parsed.get("project_name", f"ai_repo_{random.randint(100, 999)}")
             return CodingTask(
-                project_name=parsed.get("project_name", f"ai_repo_{random.randint(100, 999)}"),
+                project_name=sanitize_project_name(raw_project_name),
                 language=parsed.get("language", "python"),
                 files=parsed.get("files", {}),
                 git_commits=parsed.get("git_commits", ["feat: Initial implementation"])

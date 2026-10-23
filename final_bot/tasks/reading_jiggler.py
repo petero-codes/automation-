@@ -29,15 +29,13 @@ def execute_reading_micro_scroll() -> bool:
     # 2. Natural Reading Dwell (1.5s – 3.0s)
     dwell_duration = random.uniform(1.5, 3.0)
     if state.stop_automation_event.wait(dwell_duration):
-        # Human interrupted during dwell; attempt symmetric recovery
-        for _ in range(notches):
-            safe_scroll('up')
+        # Non-maskable human priority (IRQ 0): instant yield with zero injected resistance
+        log("[Reading Jiggler] Human activity detected during dwell. Yielding immediately.")
         return False
 
     # 3. Exact Counter-Scroll Up (Zero-Drift Return)
     for _ in range(notches):
         if state.is_stopped():
-            safe_scroll('up')
             return False
         safe_scroll('up')
         time.sleep(random.uniform(0.08, 0.16))

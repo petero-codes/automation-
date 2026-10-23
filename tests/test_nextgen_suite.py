@@ -16,11 +16,20 @@ if str(BASE_DIR) not in sys.path:
 from core import state
 from core.priority_engine import priority_engine, get_idle_time_ms
 from core.checkpoint_manager import CheckpointManager
-from core.procedural_coder import ProceduralCoder
+from core.procedural_coder import ProceduralCoder, sanitize_project_name
 from core.financial_generator import FinancialGenerator
 from config.domains import get_domain_count, get_random_domain, TECHNICAL_DOMAINS
 from tasks.reading_jiggler import execute_reading_micro_scroll
-from tasks.scheduler import Scheduler
+from tasks.scheduler import Scheduler, filter_runnable_tasks
+from tasks.shared import (
+    is_vscode_installed,
+    get_vscode_executable,
+    is_excel_installed,
+    get_excel_executable,
+    detect_best_browser,
+    get_installed_browsers,
+    get_app_path
+)
 from tasks.engineering_workload import task_software_engineering
 from tasks.financial_workload import task_financial_modeling
 from tasks.research_workload import task_technical_research
@@ -145,19 +154,99 @@ class TestNextgenWorkforceEngine(unittest.TestCase):
         self.assertFalse(os.path.exists(test_file))
 
     # -------------------------------------------------------------
-    # 7. PILLAR: Scheduler Workload Matrix
+    # 7. PILLAR: Scheduler Workload Matrix & Dynamic Application Discovery
     # -------------------------------------------------------------
     def test_scheduler_workload_weights(self):
         """Verifies weighted scheduler correctly chooses from enterprise workload pool."""
         weights = {
-            task_software_engineering: 5,
-            task_financial_modeling: 5,
             task_technical_research: 4,
             task_reading_mode: 3
         }
         sched = Scheduler(weights)
         chosen = sched.pick_next_task()
         self.assertIn(chosen, weights.keys())
+
+    def test_app_detection_helpers(self):
+        """Verifies multi-tier detection queries system PATH and registry without errors."""
+        self.assertIsInstance(is_vscode_installed(), bool)
+        self.assertIsInstance(is_excel_installed(), bool)
+        
+        best_exe, best_title = detect_best_browser()
+        self.assertIsInstance(best_exe, str)
+        self.assertIsInstance(best_title, str)
+        self.assertTrue(len(best_exe) > 0)
+        self.assertTrue(len(best_title) > 0)
+        
+        browsers = get_installed_browsers()
+        self.assertIsInstance(browsers, list)
+
+    def test_project_name_sanitization(self):
+        """Verifies invalid path chars and traversal attempts are sanitized."""
+        unsafe_names = [
+            "../../etc/passwd",
+            "repo:name*with?bad<chars>",
+            "my project with spaces",
+            'quotes"and|pipes',
+            "____leading_trailing____"
+        ]
+        for name in unsafe_names:
+            clean = sanitize_project_name(name)
+            self.assertTrue(all(c not in clean for c in '<>:"/\\|?*'))
+            self.assertFalse(clean.startswith("_"))
+            self.assertFalse(clean.endswith("_"))
+            self.assertGreater(len(clean), 0)
+
+    def test_scheduler_dynamic_pruning_missing_apps(self):
+        """Verifies Scheduler prunes workloads for uninstalled apps and falls back gracefully."""
+        from unittest.mock import patch
+        
+        # Scenario A: Both VS Code and Excel missing
+        with patch("tasks.scheduler.is_vscode_installed", return_value=False), \
+             patch("tasks.scheduler.is_excel_installed", return_value=False):
+            test_weights = {
+                task_software_engineering: 5,
+                task_financial_modeling: 5,
+                task_technical_research: 4,
+                task_reading_mode: 3
+            }
+            sched = Scheduler(test_weights)
+            # Software engineering and financial modeling must be pruned
+            self.assertNotIn(task_software_engineering, sched.task_weights)
+            self.assertNotIn(task_financial_modeling, sched.task_weights)
+            self.assertIn(task_technical_research, sched.task_weights)
+            self.assertIn(task_reading_mode, sched.task_weights)
+
+        # Scenario B: Target machine has zero productivity tools
+        with patch("tasks.scheduler.is_vscode_installed", return_value=False), \
+             patch("tasks.scheduler.is_excel_installed", return_value=False):
+            empty_weights = {
+                task_software_engineering: 5,
+                task_financial_modeling: 5
+            }
+            sched = Scheduler(empty_weights)
+            # Must fall back to safe browser research and reading mode
+            self.assertGreaterEqual(len(sched.task_weights), 2)
+            self.assertIn(task_technical_research, sched.task_weights)
+            self.assertIn(task_reading_mode, sched.task_weights)
+
+    def test_workload_skipping_guards_when_apps_uninstalled(self):
+        """Verifies task functions return False immediately if app is not installed (zero blind typing)."""
+        from unittest.mock import patch
+
+        with patch("tasks.engineering_workload.is_vscode_installed", return_value=False):
+            res_se = task_software_engineering(10)
+            self.assertFalse(res_se)
+
+        with patch("tasks.financial_workload.is_excel_installed", return_value=False):
+            res_fm = task_financial_modeling(10)
+            self.assertFalse(res_fm)
+
+    def test_reading_jiggler_dwell_instant_yield(self):
+        """Verifies human activity during dwell aborts without counter-scroll contention."""
+        # Set stop event so wait returns True immediately
+        state.stop_automation_event.set()
+        res = execute_reading_micro_scroll()
+        self.assertFalse(res)
 
 
 if __name__ == "__main__":

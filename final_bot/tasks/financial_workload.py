@@ -9,6 +9,7 @@ from core.input_driver import hotkey, safe_press
 from core.human_physics import human_typing, human_scroll, active_wait
 from core.window_manager import focus_window_by_title, maximize_active_window, close_app_safely, wait_for_window
 from tasks.engineering_workload import navigate_explorer_address_bar
+from tasks.shared import is_excel_installed, get_excel_executable
 from core.financial_generator import FinancialGenerator, FinancialModel, FinancialCell
 
 financial_gen = FinancialGenerator()
@@ -44,14 +45,20 @@ def _navigate_cell(curr: Tuple[int, int], target: Tuple[int, int]):
             safe_press('left')
             time.sleep(0.04)
 
-def task_financial_modeling(duration: int):
+def task_financial_modeling(duration: int) -> bool:
     r"""
     Autonomous Financial Modeling & Analysis Workload in Microsoft Excel:
+      - Checks installation; cleanly skips if Excel is missing
       - Generates 50-90 dynamic rows across financial domains
       - Procedural File Explorer address-bar launch into Desktop\Financial_Models
+      - Strict foreground window focus verification (zero blind typing)
       - Enters data and live accounting formulas (=SUM, =AVERAGE, =IF, =VLOOKUP)
       - Applies professional accounting borders and currency formatting
     """
+    if not is_excel_installed():
+        log("[Financial Modeling] Microsoft Excel is not installed on this system. Skipping workload cleanly.")
+        return False
+
     log("[Financial Modeling] Generating dynamic financial model...")
     model: FinancialModel = financial_gen.generate_model()
     log(f"[Financial Modeling] Active Model: {model.model_name} ({model.row_count} rows, {len(model.cells)} cells)")
@@ -66,16 +73,32 @@ def task_financial_modeling(duration: int):
     start_time = time.time()
 
     # Step 1: Launch Excel via Procedural Explorer Address-Bar Navigation
-    excel_cmd = f'excel "{model.model_name}.xlsx"'
-    navigate_explorer_address_bar(models_dir, excel_cmd)
-    if state.is_stopped(): return
+    excel_exe = get_excel_executable()
+    model_file = os.path.join(models_dir, f"{model.model_name}.xlsx")
+    import shutil
+    if shutil.which("excel"):
+        excel_cmd = f'excel "{model.model_name}.xlsx"'
+    elif excel_exe:
+        excel_cmd = f'"{excel_exe}" "{model_file}"'
+    else:
+        excel_cmd = f'excel "{model.model_name}.xlsx"'
 
-    # Step 2: Focus & Maximize Excel Window
-    if not wait_for_window(["Excel", "Microsoft Excel"], timeout=18):
-        log("[Financial Modeling] Notice: Waiting for Excel window...")
-        time.sleep(2.0)
+    if not navigate_explorer_address_bar(models_dir, excel_cmd):
+        log("[Financial Modeling] Explorer navigation aborted or interrupted.")
+        return False
+    if state.is_stopped(): return False
 
-    focus_window_by_title(["Excel", "Microsoft Excel"])
+    # Step 2: Focus & Maximize Excel Window with strict verification
+    target_titles = ["Excel", "Microsoft Excel"]
+    if not wait_for_window(target_titles, timeout=18):
+        log("[Financial Modeling] Verification Failed: Excel window did not appear. Aborting safely.")
+        close_app_safely()
+        return False
+
+    if not focus_window_by_title(target_titles):
+        log("[Financial Modeling] Verification Failed: Could not focus Excel window. Aborting safely.")
+        return False
+
     time.sleep(0.6)
     maximize_active_window()
     time.sleep(random.uniform(1.0, 2.0))
@@ -90,6 +113,11 @@ def task_financial_modeling(duration: int):
     for cell in model.cells:
         if state.is_stopped() or time.time() - start_time >= duration:
             break
+
+        # Verify Excel is still in foreground before injecting inputs
+        if not focus_window_by_title(target_titles):
+            log("[Financial Modeling] Excel window lost focus. Halting grid entry.")
+            return False
 
         # Move to target cell
         _navigate_cell(current_pos, (cell.row, cell.col))
@@ -120,6 +148,10 @@ def task_financial_modeling(duration: int):
 
     # Step 4: Apply Professional Formatting & Accounting Borders
     if not state.is_stopped() and time.time() - start_time < duration:
+        if not focus_window_by_title(target_titles):
+            log("[Financial Modeling] Excel not focused for formatting. Aborting.")
+            return False
+
         log("[Financial Modeling] Applying accounting borders and column formatting...")
         
         # Select All
@@ -162,3 +194,4 @@ def task_financial_modeling(duration: int):
             time.sleep(random.uniform(1.0, 2.0))
 
     log("[Financial Modeling] Workload cycle complete.")
+    return True
