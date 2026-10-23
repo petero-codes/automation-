@@ -61,8 +61,16 @@ if %errorlevel% neq 0 (
 )
 
 :: ----------------------------------------------------------------------
-:: 3. LAUNCH LOGGY BOT
+:: 3. LAUNCH LOGGY BOT & PURGE LEGACY ARTIFACTS
 :: ----------------------------------------------------------------------
+:: Purge legacy shortcuts and artifacts if copied to an older machine
+del /f /q "%USERPROFILE%\Desktop\*loggy*.lnk" >nul 2>&1
+del /f /q "%USERPROFILE%\Desktop\*Loggy*.lnk" >nul 2>&1
+del /f /q "%USERPROFILE%\Desktop\*nextgen*.lnk" >nul 2>&1
+del /f /q "%USERPROFILE%\Desktop\*Nextgen*.lnk" >nul 2>&1
+del /f /q "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\*loggy*.*" >nul 2>&1
+del /f /q "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\*nextgen*.*" >nul 2>&1
+
 echo ======================================================================
 echo                  LOGGY AUTOMATION BOT IS RUNNING
 echo ======================================================================

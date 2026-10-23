@@ -92,6 +92,7 @@ python-automation/
 │   │   ├── priority_engine.py    # Input Monitor & Priority Controller (<30ms IRQ 0)
 │   │   ├── session_manager.py    # Session Manager (Pause vs Console Close Termination)
 │   │   ├── checkpoint_manager.py # Checkpoint Manager (Windows DPAPI encryption)
+│   │   ├── system_cleaner.py     # Legacy System Cleaner (Auto-purges obsolete artifacts)
 │   │   ├── procedural_coder.py   # High-entropy software engineering generator
 │   │   ├── financial_generator.py# 50-90 row Excel model generator with live formulas
 │   │   ├── human_physics.py      # Cubic Bezier mouse easing, typing flow, scroll
@@ -107,7 +108,7 @@ python-automation/
 │       └── shared.py              # Multi-tier app detection & browser utilities
 │
 └── tests/
-    └── test_nextgen_suite.py     # 19 comprehensive unit & integration tests
+    └── test_nextgen_suite.py     # 20 comprehensive unit & integration tests
 ```
 
 ---
@@ -130,4 +131,4 @@ To execute the unit and integration test suite:
 ```cmd
 .venv\Scripts\python.exe -m unittest tests/test_nextgen_suite.py
 ```
-* **Test Results**: 19/19 Tests Passing (Priority Engine, Zero-Drift Jiggler, Procedural Coder, Path Sanitization, Financial Generator, 220+ Domains, DPAPI Checkpoints, App Discovery, Dynamic Workload Pruning, Workload Skipping Guards, Dedicated Offline Coding & Excel Matrix, Session Manager Lifecycle, Fine-Grained VS Code Resumption, Fine-Grained Excel Resumption, Console Control Handler).
+* **Test Results**: 20/20 Tests Passing (Priority Engine, Zero-Drift Jiggler, Procedural Coder, Path Sanitization, Financial Generator, 220+ Domains, DPAPI Checkpoints, App Discovery, Dynamic Workload Pruning, Workload Skipping Guards, Dedicated Offline Coding & Excel Matrix, Session Manager Lifecycle, Fine-Grained VS Code Resumption, Fine-Grained Excel Resumption, Console Control Handler, Legacy System Cleaner).

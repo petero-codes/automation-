@@ -29,15 +29,35 @@ echo ======================================================================
 echo                    LOGGY BOT - ONE-CLICK INSTALLER
 echo ======================================================================
 echo  This automated installer will:
-echo   [1] Detect or install Python 3.10+
-echo   [2] Build an isolated virtual environment .venv
-echo   [3] Install all required dependencies
-echo   [4] Register the Interception kernel filter driver
+echo   [1] Purge obsolete files from previous or legacy systems
+echo   [2] Detect or install Python 3.10+
+echo   [3] Build an isolated virtual environment .venv
+echo   [4] Install all required dependencies
+echo   [5] Register the Interception kernel filter driver
 echo ======================================================================
 echo.
 
 :: ----------------------------------------------------------------------
-:: 2. DETECT OR AUTO-INSTALL PYTHON
+:: 2. PURGE OBSOLETE / LEGACY SYSTEM ARTIFACTS
+:: ----------------------------------------------------------------------
+echo Cleaning legacy system artifacts...
+del /f /q "%USERPROFILE%\Desktop\*loggy*.lnk" >nul 2>&1
+del /f /q "%USERPROFILE%\Desktop\*Loggy*.lnk" >nul 2>&1
+del /f /q "%USERPROFILE%\Desktop\*nextgen*.lnk" >nul 2>&1
+del /f /q "%USERPROFILE%\Desktop\*Nextgen*.lnk" >nul 2>&1
+del /f /q "%PUBLIC%\Desktop\*loggy*.lnk" >nul 2>&1
+del /f /q "%PUBLIC%\Desktop\*nextgen*.lnk" >nul 2>&1
+del /f /q "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\*loggy*.*" >nul 2>&1
+del /f /q "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\*nextgen*.*" >nul 2>&1
+if exist "%PROJECT_ROOT%Nextgen_Workforce.exe" del /f /q "%PROJECT_ROOT%Nextgen_Workforce.exe" >nul 2>&1
+if exist "%PROJECT_ROOT%..\Nextgen_Workforce.exe" del /f /q "%PROJECT_ROOT%..\Nextgen_Workforce.exe" >nul 2>&1
+if exist "%PROJECT_ROOT%final_bot\idle_shorts.log" del /f /q "%PROJECT_ROOT%final_bot\idle_shorts.log" >nul 2>&1
+if exist "%PROJECT_ROOT%final_bot\idle_firefox.log" del /f /q "%PROJECT_ROOT%final_bot\idle_firefox.log" >nul 2>&1
+echo [✓] Legacy system files removed.
+echo.
+
+:: ----------------------------------------------------------------------
+:: 3. DETECT OR AUTO-INSTALL PYTHON
 :: ----------------------------------------------------------------------
 echo [1/3] Checking Python installation...
 

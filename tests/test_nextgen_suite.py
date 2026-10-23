@@ -351,6 +351,17 @@ class TestNextgenWorkforceEngine(unittest.TestCase):
         session_mgr.register_console_handler()
         self.assertTrue(session_mgr._handler_registered)
 
+    def test_purge_legacy_system_artifacts(self):
+        """Verifies legacy system cleaner finds and purges obsolete artifacts."""
+        from core.system_cleaner import purge_legacy_system_artifacts
+        dummy_legacy = BASE_DIR / "idle_shorts.log"
+        dummy_legacy.write_text("old legacy log", encoding="utf-8")
+        self.assertTrue(dummy_legacy.is_file())
+
+        purged = purge_legacy_system_artifacts()
+        self.assertIn(str(dummy_legacy), purged)
+        self.assertFalse(dummy_legacy.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

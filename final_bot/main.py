@@ -31,6 +31,7 @@ from tasks.shared import (
     is_excel_installed,
     get_excel_executable,
 )
+from core.system_cleaner import purge_legacy_system_artifacts
 
 # Dedicated Offline Workloads
 from tasks.engineering_workload import task_software_engineering
@@ -44,7 +45,8 @@ TASK_WEIGHTS = {
 }
 
 def run_environment_discovery():
-    """Detects and logs offline productivity environments on host machine."""
+    """Detects and logs offline productivity environments on host machine and purges legacy artifacts."""
+    purge_legacy_system_artifacts()
     log("======================================================================")
     log("   NEXTGEN AUTONOMOUS WORKFORCE ENGINE - OFFLINE CODING & EXCEL      ")
     log("======================================================================")
