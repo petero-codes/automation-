@@ -7,13 +7,51 @@ from core import state
 from core.logger import log
 from core.input_driver import hotkey, safe_press
 from core.human_physics import human_typing, human_scroll, active_wait
-from core.window_manager import focus_window_by_title, maximize_active_window, close_app_safely, wait_for_window
-from tasks.engineering_workload import navigate_explorer_address_bar
-from tasks.shared import is_excel_installed, get_excel_executable
+from core.window_manager import (
+    focus_window_by_title,
+    maximize_active_window,
+    close_app_safely,
+    wait_for_window,
+    bind_thread_to_interactive_desktop,
+)
+from tasks.shared import is_excel_installed, get_excel_executable, open_app_via_run
 from core.financial_generator import FinancialGenerator, FinancialModel, FinancialCell
 from core.checkpoint_manager import checkpoint_mgr
 
 financial_gen = FinancialGenerator()
+
+def launch_or_focus_excel() -> bool:
+    """
+    Directly and reliably launches Microsoft Excel or brings an existing instance forward,
+    then verifies window visibility and focus.
+    """
+    bind_thread_to_interactive_desktop()
+    target_titles = ["Excel", "Microsoft Excel"]
+
+    # 1. If Excel is already open, bring to front
+    if focus_window_by_title(target_titles):
+        log("[Financial Modeling] Microsoft Excel is already running; brought to front.")
+        return True
+
+    # 2. Try launching via Start menu
+    log("[Financial Modeling] Launching Microsoft Excel via Start Menu...")
+    open_app_via_run("excel")
+    time.sleep(2.0)
+
+    # 3. If still not appeared, try direct process spawn fallback
+    if not wait_for_window(target_titles, timeout=10.0):
+        excel_exe = get_excel_executable()
+        try:
+            import subprocess
+            if excel_exe and os.path.isfile(excel_exe):
+                subprocess.Popen([excel_exe])
+            else:
+                subprocess.Popen(["cmd.exe", "/c", "start", "excel"])
+        except Exception as e:
+            log(f"[Financial Modeling] Launch error: {e}")
+
+    # 4. Wait for window to appear, focus, and verify
+    return wait_for_window(target_titles, timeout=15.0)
 
 def _navigate_cell(curr: Tuple[int, int], target: Tuple[int, int]):
     """Navigates from current grid coordinate to target using arrow keys."""
@@ -107,28 +145,13 @@ def task_financial_modeling(duration: int) -> bool:
     target_titles = ["Excel", "Microsoft Excel"]
 
     # Step 1: Launch or Bring Forward Excel
-    excel_exe = get_excel_executable()
-    model_file = os.path.join(models_dir, f"{model.model_name}.xlsx")
-    import shutil
-    if shutil.which("excel"):
-        excel_cmd = f'excel "{model.model_name}.xlsx"'
-    elif excel_exe:
-        excel_cmd = f'"{excel_exe}" "{model_file}"'
-    else:
-        excel_cmd = f'excel "{model.model_name}.xlsx"'
-
     if not is_resuming or not focus_window_by_title(target_titles):
-        if not navigate_explorer_address_bar(models_dir, excel_cmd):
-            log("[Financial Modeling] Explorer navigation aborted or interrupted.")
+        if not launch_or_focus_excel():
+            log("[Financial Modeling] Verification Failed: Excel window did not appear. Aborting safely.")
             return False
         if state.is_stopped(): return False
 
     # Step 2: Focus & Maximize Excel Window with strict verification
-    if not wait_for_window(target_titles, timeout=18):
-        log("[Financial Modeling] Verification Failed: Excel window did not appear. Aborting safely.")
-        close_app_safely()
-        return False
-
     if not focus_window_by_title(target_titles):
         log("[Financial Modeling] Verification Failed: Could not focus Excel window. Aborting safely.")
         return False

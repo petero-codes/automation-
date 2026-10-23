@@ -95,7 +95,7 @@ class PriorityEngine:
 
     def trigger_instant_yield(self, reason: str):
         """Halts automation within <30ms and restores raw human control."""
-        if not state.automation_active.is_set() and not state.is_stopped():
+        if not state.automation_active.is_set():
             return
 
         log(f"[PriorityEngine IRQ0] Instant Yield: {reason}")
@@ -118,24 +118,29 @@ class PriorityEngine:
     def _low_level_mouse_proc(self, nCode: int, wParam: wintypes.WPARAM, lParam: wintypes.LPARAM) -> int:
         if nCode >= 0:
             if not self._is_bot_injecting():
-                # 1. Mouse Button Clicks (Left, Right, Middle)
-                if wParam in (WM_LBUTTONDOWN, WM_RBUTTONDOWN, WM_MBUTTONDOWN):
-                    btn_name = {
-                        WM_LBUTTONDOWN: "Left Click",
-                        WM_RBUTTONDOWN: "Right Click",
-                        WM_MBUTTONDOWN: "Middle Click"
-                    }.get(wParam, "Button Click")
-                    self.trigger_instant_yield(f"Hardware {btn_name}")
-                
-                # 2. Mouse Displacement (> 25px)
-                elif wParam == WM_MOUSEMOVE:
-                    info = ctypes.cast(lParam, ctypes.POINTER(MSLLHOOKSTRUCT)).contents
-                    cur_pos = (info.pt.x, info.pt.y)
-                    if self.last_mouse_pos is not None:
-                        dist = math.hypot(cur_pos[0] - self.last_mouse_pos[0], cur_pos[1] - self.last_mouse_pos[1])
-                        if dist >= self.displacement_threshold:
-                            self.trigger_instant_yield(f"Mouse Displacement ({dist:.1f}px > {self.displacement_threshold}px)")
-                    self.last_mouse_pos = cur_pos
+                if state.automation_active.is_set():
+                    # 1. Mouse Button Clicks (Left, Right, Middle)
+                    if wParam in (WM_LBUTTONDOWN, WM_RBUTTONDOWN, WM_MBUTTONDOWN):
+                        btn_name = {
+                            WM_LBUTTONDOWN: "Left Click",
+                            WM_RBUTTONDOWN: "Right Click",
+                            WM_MBUTTONDOWN: "Middle Click"
+                        }.get(wParam, "Button Click")
+                        self.trigger_instant_yield(f"Hardware {btn_name}")
+                    
+                    # 2. Mouse Displacement (> 25px)
+                    elif wParam == WM_MOUSEMOVE:
+                        info = ctypes.cast(lParam, ctypes.POINTER(MSLLHOOKSTRUCT)).contents
+                        cur_pos = (info.pt.x, info.pt.y)
+                        if self.last_mouse_pos is not None:
+                            dist = math.hypot(cur_pos[0] - self.last_mouse_pos[0], cur_pos[1] - self.last_mouse_pos[1])
+                            if dist >= self.displacement_threshold:
+                                self.trigger_instant_yield(f"Mouse Displacement ({dist:.1f}px > {self.displacement_threshold}px)")
+                        self.last_mouse_pos = cur_pos
+                else:
+                    if wParam == WM_MOUSEMOVE:
+                        info = ctypes.cast(lParam, ctypes.POINTER(MSLLHOOKSTRUCT)).contents
+                        self.last_mouse_pos = (info.pt.x, info.pt.y)
             else:
                 # Update pos during bot moves without tripping displacement check
                 info = ctypes.cast(lParam, ctypes.POINTER(MSLLHOOKSTRUCT)).contents
@@ -162,7 +167,7 @@ class PriorityEngine:
                             log(f"[PriorityEngine] Resume request note: {e}")
 
                 # 2. Double-tap [ESC]
-                elif vk == VK_ESCAPE:
+                elif vk == VK_ESCAPE and state.automation_active.is_set():
                     now = time.monotonic()
                     if now - self.last_esc_time <= 0.8:
                         self.esc_tap_count += 1

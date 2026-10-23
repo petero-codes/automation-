@@ -1,13 +1,34 @@
 import ctypes
+from ctypes import wintypes
 import time
 import platform
 from core import state
 from core.input_driver import hotkey
 from core.logger import log
 
-def get_foreground_title():
+_interactive_desktop_handle = None
+
+def bind_thread_to_interactive_desktop():
+    """
+    Ensures the calling thread is attached to the user's interactive desktop (WinSta0\\Default)
+    so window enumeration, focus, and input injection target the active screen.
+    """
+    global _interactive_desktop_handle
+    try:
+        GENERIC_ALL = 0x10000000
+        if not _interactive_desktop_handle:
+            _interactive_desktop_handle = ctypes.windll.user32.OpenInputDesktop(0, False, GENERIC_ALL)
+        if _interactive_desktop_handle:
+            ctypes.windll.user32.SetThreadDesktop(_interactive_desktop_handle)
+    except Exception:
+        pass
+
+def get_foreground_title() -> str:
+    bind_thread_to_interactive_desktop()
     try:
         hwnd = ctypes.windll.user32.GetForegroundWindow()
+        if not hwnd:
+            return ''
         length = ctypes.windll.user32.GetWindowTextLengthW(hwnd)
         if not length:
             return ''
@@ -18,14 +39,15 @@ def get_foreground_title():
         log(f"Verification Error: Failed to get foreground title - {e}")
         return ''
 
-def is_window_zoomed(hwnd):
+def is_window_zoomed(hwnd) -> bool:
     return ctypes.windll.user32.IsZoomed(hwnd) != 0
 
-def wait_for_window(fragments, timeout=12.0):
+def wait_for_window(fragments, timeout=18.0) -> bool:
     """
-    Verification Panel: Robustly waits for a window whose title matches ANY of the provided fragments.
-    Returns True if successful, False if it timed out.
+    Waits for a visible window matching ANY fragment to appear, brings it to foreground,
+    and verifies active focus.
     """
+    bind_thread_to_interactive_desktop()
     if isinstance(fragments, str):
         fragments = [fragments]
         
@@ -34,34 +56,50 @@ def wait_for_window(fragments, timeout=12.0):
     while time.time() < deadline:
         if state.is_stopped(): return False
         
+        # 1. Check if already active foreground
         current_title = get_foreground_title().lower()
         for frag in fragments:
             if frag.lower() in current_title:
-                log(f"Verification Success: Found window '{current_title}'")
+                log(f"Verification Success: Active foreground window matches '{current_title}'")
                 return True
+        
+        # 2. Search desktop and bring to front
+        if focus_window_by_title(fragments):
+            log(f"Verification Success: Found and focused window matching {fragments}")
+            return True
+            
         time.sleep(0.5)
         
     log(f"Verification Failed: Timeout waiting for window {fragments}")
     return False
 
-def focus_window_by_title(fragments):
+def focus_window_by_title(fragments) -> bool:
     """
-    Verification Panel: Attempts to find an existing window by title fragment and focus it.
-    Uses AttachThreadInput to bypass Windows focus stealing restrictions.
+    Finds an existing visible window matching title fragments and brings it to front.
+    Uses AttachThreadInput to bypass Windows focus-stealing restrictions.
     """
+    bind_thread_to_interactive_desktop()
     if isinstance(fragments, str):
         fragments = [fragments]
         
     found = [False]
-    def cb(hwnd, _):
-        length = ctypes.windll.user32.GetWindowTextLengthW(hwnd)
+    user32 = ctypes.windll.user32
+
+    def cb(hwnd, lparam):
+        # Only inspect visible windows
+        if not user32.IsWindowVisible(hwnd):
+            return True
+
+        length = user32.GetWindowTextLengthW(hwnd)
+        if length <= 0:
+            return True
+
         buf = ctypes.create_unicode_buffer(length + 1)
-        ctypes.windll.user32.GetWindowTextW(hwnd, buf, length + 1)
+        user32.GetWindowTextW(hwnd, buf, length + 1)
         current_title = buf.value.lower()
         
         for frag in fragments:
             if frag.lower() in current_title:
-                user32 = ctypes.windll.user32
                 foreground_hwnd = user32.GetForegroundWindow()
                 
                 if foreground_hwnd != hwnd:
@@ -85,24 +123,24 @@ def focus_window_by_title(fragments):
                 return False # Stop enumerating
         return True
         
-    Proc = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int))
-    ctypes.windll.user32.EnumWindows(Proc(cb), 0)
+    WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    user32.EnumWindows(WNDENUMPROC(cb), 0)
     
     if found[0]:
         time.sleep(0.6)
     return found[0]
 
-def maximize_active_window(retries=3):
+def maximize_active_window(retries=3) -> bool:
     """
-    Verification Panel: Attempts to maximize the window and explicitly VERIFIES if it worked.
-    Uses 'win + up' as requested by the user. If it fails, retries.
+    Attempts to maximize the foreground window and verifies if it is zoomed.
     """
     if platform.system() != 'Windows':
-        return
+        return False
         
+    bind_thread_to_interactive_desktop()
     log("Verification: Attempting to maximize active window...")
     for attempt in range(retries):
-        if state.is_stopped(): return
+        if state.is_stopped(): return False
         
         hwnd = ctypes.windll.user32.GetForegroundWindow()
         if not hwnd:
@@ -113,7 +151,6 @@ def maximize_active_window(retries=3):
             log("Verification Success: Window is already maximized.")
             return True
             
-        # The user requested start + up (win + up)
         hotkey('win', 'up')
         time.sleep(1.0)
         
@@ -125,7 +162,6 @@ def maximize_active_window(retries=3):
             
     log("Verification Failed: Could not maximize window after all retries.")
     return False
-
 
 def close_app_safely():
     log("Closing application cleanly (Alt+F4)")

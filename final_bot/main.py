@@ -96,15 +96,10 @@ def monitor_idle():
                 sched = Scheduler(TASK_WEIGHTS)
                 threading.Thread(target=sched.run, daemon=True).start()
 
-def _bind_to_interactive_desktop():
-    GENERIC_ALL = 0x10000000
-    desk = ctypes.windll.user32.OpenInputDesktop(0, False, GENERIC_ALL)
-    if desk:
-        ctypes.windll.user32.SetThreadDesktop(desk)
-        ctypes.windll.user32.CloseDesktop(desk)
+from core.window_manager import bind_thread_to_interactive_desktop
 
 def main():
-    _bind_to_interactive_desktop()
+    bind_thread_to_interactive_desktop()
     init_driver()
     start_priority_engine()
     run_environment_discovery()

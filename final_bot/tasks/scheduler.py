@@ -53,6 +53,8 @@ class Scheduler:
         return chosen
 
     def run(self):
+        from core.window_manager import bind_thread_to_interactive_desktop
+        bind_thread_to_interactive_desktop()
         state.clear_stop()
         log("[Scheduler] Inactivity threshold reached. Resuming Nextgen Autonomous Workforce Engine.")
         start_time = time.time()

@@ -7,57 +7,51 @@ from core import state
 from core.logger import log
 from core.input_driver import hotkey, safe_press, safe_write
 from core.human_physics import human_typing, human_mouse_move, human_scroll, active_wait
-from core.window_manager import focus_window_by_title, maximize_active_window, close_app_safely, wait_for_window
+from core.window_manager import (
+    focus_window_by_title,
+    maximize_active_window,
+    close_app_safely,
+    wait_for_window,
+    bind_thread_to_interactive_desktop,
+)
 from core.procedural_coder import ProceduralCoder, CodingTask
 from core.checkpoint_manager import checkpoint_mgr
-from tasks.shared import is_vscode_installed, get_vscode_executable
+from tasks.shared import is_vscode_installed, get_vscode_executable, open_app_via_run
 
 coder_instance = ProceduralCoder()
 
-def navigate_explorer_address_bar(target_path: str, command_to_run: str = "code .") -> bool:
+def launch_or_focus_vscode(workspace_dir: str) -> bool:
     """
-    Procedural File Explorer address-bar navigation:
-      1. Win + E -> Opens File Explorer
-      2. Alt + D -> Focuses address bar
-      3. Types target path and navigates
-      4. Alt + D -> Types launch command (e.g. 'code .') and submits
+    Directly and reliably launches Visual Studio Code or brings an existing instance forward,
+    then verifies window visibility and focus.
     """
-    if state.is_stopped():
-        return False
+    bind_thread_to_interactive_desktop()
+    target_titles = ["Visual Studio Code", "Code"]
 
-    log(f"[Explorer Navigation] Opening File Explorer (Win+E)...")
-    safe_press('win')
-    time.sleep(0.2)
-    hotkey('win', 'e')
-    time.sleep(random.uniform(1.2, 2.0))
+    # 1. If VS Code is already open, bring to front
+    if focus_window_by_title(target_titles):
+        log("[Software Engineering] Visual Studio Code is already running; brought to front.")
+        return True
 
-    if not wait_for_window(["File Explorer", "Explorer"], timeout=10):
-        log("[Explorer Navigation] Explorer window not detected, proceeding directly.")
-    else:
-        focus_window_by_title(["File Explorer", "Explorer"])
-        time.sleep(0.5)
+    # 2. Try launching via Start menu
+    log(f"[Software Engineering] Launching VS Code for workspace: {workspace_dir}")
+    open_app_via_run("code")
+    time.sleep(2.0)
 
-    # Focus Address Bar
-    log(f"[Explorer Navigation] Navigating address bar to: {target_path}")
-    hotkey('alt', 'd')
-    time.sleep(random.uniform(0.3, 0.6))
-    
-    # Type path and submit
-    human_typing(target_path, wpm=85, typos=False)
-    if state.is_stopped(): return False
-    safe_press('enter')
-    time.sleep(random.uniform(1.2, 2.0))
+    # 3. If still not appeared, try direct process spawn fallback
+    if not wait_for_window(target_titles, timeout=10.0):
+        vscode_exe = get_vscode_executable()
+        try:
+            import subprocess
+            if vscode_exe and os.path.isfile(vscode_exe):
+                subprocess.Popen([vscode_exe, workspace_dir])
+            else:
+                subprocess.Popen(["cmd.exe", "/c", "code", workspace_dir])
+        except Exception as e:
+            log(f"[Software Engineering] Launch error: {e}")
 
-    # Focus address bar again to trigger executable
-    log(f"[Explorer Navigation] Executing in directory: {command_to_run}")
-    hotkey('alt', 'd')
-    time.sleep(random.uniform(0.3, 0.5))
-    human_typing(command_to_run, wpm=80, typos=False)
-    if state.is_stopped(): return False
-    safe_press('enter')
-    time.sleep(random.uniform(2.5, 4.0))
-
-    return True
+    # 4. Wait for window to appear, focus, and verify
+    return wait_for_window(target_titles, timeout=15.0)
 
 def task_software_engineering(duration: int) -> bool:
     """
@@ -113,27 +107,13 @@ def task_software_engineering(duration: int) -> bool:
     target_titles = ["Visual Studio Code", "Code"]
 
     # Step 1: Launch or Bring Forward VS Code
-    vscode_exe = get_vscode_executable()
-    import shutil
-    if shutil.which("code"):
-        command_to_run = "code ."
-    elif vscode_exe:
-        command_to_run = f'"{vscode_exe}" "{workspace_dir}"'
-    else:
-        command_to_run = "code ."
-
     if not is_resuming or not focus_window_by_title(target_titles):
-        if not navigate_explorer_address_bar(workspace_dir, command_to_run):
-            log("[Software Engineering] Explorer navigation aborted or interrupted.")
+        if not launch_or_focus_vscode(workspace_dir):
+            log("[Software Engineering] Verification Failed: VS Code window did not appear. Aborting safely.")
             return False
         if state.is_stopped(): return False
 
     # Step 2: Focus & Maximize VS Code with strict verification
-    if not wait_for_window(target_titles, timeout=18):
-        log("[Software Engineering] Verification Failed: VS Code window did not appear. Aborting safely.")
-        close_app_safely()
-        return False
-
     if not focus_window_by_title(target_titles):
         log("[Software Engineering] Verification Failed: Could not focus VS Code window. Aborting safely.")
         return False
