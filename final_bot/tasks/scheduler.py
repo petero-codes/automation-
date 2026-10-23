@@ -28,15 +28,24 @@ def filter_runnable_tasks(task_weights: Dict[Callable, int]) -> Dict[Callable, i
             log(f"[Scheduler] Skipping unavailable workload: {name} (application not installed)")
 
     if not runnable:
-        log("[Scheduler] All requested workloads unavailable. Falling back to Browser Research, Reading Mode, and System Diagnostics.")
-        from tasks.research_workload import task_technical_research
-        from tasks.reading_jiggler import task_reading_mode
-        import tasks.system_tasks as sys_tasks
-        runnable = {
-            task_technical_research: 4,
-            task_reading_mode: 3,
-            sys_tasks.task_view_task_manager: 1,
-        }
+        is_desktop_only = all(
+            ('software_engineering' in getattr(t, '__name__', '') or 'financial' in getattr(t, '__name__', ''))
+            for t in task_weights.keys()
+        )
+        if is_desktop_only:
+            log("[Scheduler] Neither VS Code nor Excel was detected. Please install Visual Studio Code or Microsoft Excel to run workloads.")
+            from tasks.reading_jiggler import task_reading_mode
+            runnable = {task_reading_mode: 1}
+        else:
+            log("[Scheduler] All requested workloads unavailable. Falling back to Browser Research, Reading Mode, and System Diagnostics.")
+            from tasks.research_workload import task_technical_research
+            from tasks.reading_jiggler import task_reading_mode
+            import tasks.system_tasks as sys_tasks
+            runnable = {
+                task_technical_research: 4,
+                task_reading_mode: 3,
+                sys_tasks.task_view_task_manager: 1,
+            }
 
     return runnable
 

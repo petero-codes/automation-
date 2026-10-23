@@ -223,6 +223,163 @@ class CircuitBreaker:
             "test: Add failure threshold validation and state transitions",
             "docs: Document half-open probe recovery dynamics"
         ]
+    },
+    {
+        "domain": "lru_cache_ttl",
+        "lang": "python",
+        "files": {
+            "lru_cache.py": '''"""High-Throughput LRU Cache with Millisecond TTL Expiry."""
+import time
+from typing import Any, Optional, Dict
+
+class Node:
+    def __init__(self, key: str, val: Any, expires_at: float):
+        self.key = key
+        self.val = val
+        self.expires_at = expires_at
+        self.prev: Optional['Node'] = None
+        self.next: Optional['Node'] = None
+
+class LRUCacheTTL:
+    def __init__(self, capacity: int, default_ttl_sec: float = 60.0):
+        self.capacity = capacity
+        self.default_ttl = default_ttl_sec
+        self.map: Dict[str, Node] = {}
+        self.head = Node("__HEAD__", None, 0)
+        self.tail = Node("__TAIL__", None, 0)
+        self.head.next = self.tail
+        self.tail.prev = self.head
+
+    def _remove(self, node: Node) -> None:
+        p, n = node.prev, node.next
+        if p and n:
+            p.next, n.prev = n, p
+
+    def _add_front(self, node: Node) -> None:
+        first = self.head.next
+        self.head.next = node
+        node.prev = self.head
+        node.next = first
+        if first:
+            first.prev = node
+
+    def get(self, key: str) -> Optional[Any]:
+        node = self.map.get(key)
+        if not node:
+            return None
+        if time.time() > node.expires_at:
+            self._remove(node)
+            del self.map[key]
+            return None
+        self._remove(node)
+        self._add_front(node)
+        return node.val
+
+    def put(self, key: str, val: Any, ttl_sec: Optional[float] = None) -> None:
+        ttl = ttl_sec if ttl_sec is not None else self.default_ttl
+        exp = time.time() + ttl
+        if key in self.map:
+            self._remove(self.map[key])
+        elif len(self.map) >= self.capacity:
+            lru = self.tail.prev
+            if lru and lru is not self.head:
+                self._remove(lru)
+                del self.map[lru.key]
+        node = Node(key, val, exp)
+        self._add_front(node)
+        self.map[key] = node
+''',
+            "test_lru.py": '''import unittest
+import time
+from lru_cache import LRUCacheTTL
+
+class TestLRUCacheTTL(unittest.TestCase):
+    def test_eviction(self):
+        cache = LRUCacheTTL(capacity=2, default_ttl_sec=10.0)
+        cache.put("a", 1)
+        cache.put("b", 2)
+        cache.put("c", 3) # should evict 'a'
+        self.assertIsNone(cache.get("a"))
+        self.assertEqual(cache.get("b"), 2)
+        self.assertEqual(cache.get("c"), 3)
+
+if __name__ == "__main__":
+    unittest.main()
+'''
+        },
+        "commits": [
+            "feat: Implement LRUCacheTTL with double-linked list and O(1) ops",
+            "test: Add capacity eviction and timestamp expiration test cases",
+            "perf: Optimize node pointer updates under high concurrency"
+        ]
+    },
+    {
+        "domain": "transactional_kv_store",
+        "lang": "typescript",
+        "files": {
+            "kv_store.ts": '''/**
+ * In-Memory Key-Value Store with Nested Transaction Support (ACID).
+ */
+export class TransactionalKVStore {
+  private globalStore: Map<string, string> = new Map();
+  private transactionStack: Map<string, string | null>[] = [];
+
+  public begin(): void {
+    this.transactionStack.push(new Map());
+  }
+
+  public set(key: string, value: string): void {
+    if (this.transactionStack.length > 0) {
+      const activeTx = this.transactionStack[this.transactionStack.length - 1];
+      activeTx.set(key, value);
+    } else {
+      this.globalStore.set(key, value);
+    }
+  }
+
+  public get(key: string): string | null {
+    for (let i = this.transactionStack.length - 1; i >= 0; i--) {
+      const tx = this.transactionStack[i];
+      if (tx.has(key)) {
+        return tx.get(key) ?? null;
+      }
+    }
+    return this.globalStore.get(key) ?? null;
+  }
+
+  public commit(): boolean {
+    if (this.transactionStack.length === 0) return false;
+    const currentTx = this.transactionStack.pop()!;
+    if (this.transactionStack.length > 0) {
+      const parentTx = this.transactionStack[this.transactionStack.length - 1];
+      for (const [k, v] of currentTx.entries()) {
+        parentTx.set(k, v);
+      }
+    } else {
+      for (const [k, v] of currentTx.entries()) {
+        if (v === null) {
+          this.globalStore.delete(k);
+        } else {
+          this.globalStore.set(k, v);
+        }
+      }
+    }
+    return true;
+  }
+
+  public rollback(): boolean {
+    if (this.transactionStack.length === 0) return false;
+    this.transactionStack.pop();
+    return true;
+  }
+}
+'''
+        },
+        "commits": [
+            "feat: Implement TransactionalKVStore with nested transaction scopes",
+            "fix: Support null-tombstone deletion semantics on rollbacks",
+            "test: Verify multi-level commit and rollback isolation guarantees"
+        ]
     }
 ]
 

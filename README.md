@@ -50,17 +50,16 @@ Double-click **`INSTALL.bat`** (or right-click -> *Run as administrator*).
 * Automatically detects or installs Python 3.10+.
 * Builds isolated `.venv` with machine-portability safeguards.
 * Registers the **Interception Kernel Driver** with Windows.
-* Creates a desktop shortcut: **"Loggy Bot"**.
 
 ### Step 2: Restart Your Computer (Required)
 Windows requires a one-time reboot for the kernel driver to bind to hardware mouse and keyboard device stacks.
 
 ### Step 3: Run the Workforce Engine
-Double-click **`RUN.bat`** (or your desktop shortcut).
+Double-click **`RUN.bat`**.
 * Verifies kernel driver is loaded and active.
-* Automatically auto-detects all installed software (VS Code, Microsoft Excel, Browsers).
-* Dynamically tailors the workload matrix: automatically runs installed applications, skips uninstalled ones cleanly, and falls back gracefully to Browser Research and Reading Mode.
-* Awaits 120s of human inactivity, triggers the subtle reading jiggler, and commences autonomous workforce operations.
+* Automatically auto-detects installed desktop applications (VS Code, Microsoft Excel).
+* 100% Offline operation: executes dedicated software engineering (VS Code) and financial modeling (Excel) with zero external internet dependencies.
+* Awaits 120s of unbroken human inactivity, triggers the subtle reading jiggler, and commences autonomous workforce operations.
 
 ---
 
@@ -118,4 +117,4 @@ To execute the unit and integration test suite:
 ```cmd
 .venv\Scripts\python.exe -m unittest tests/test_nextgen_suite.py
 ```
-* **Test Results**: 14/14 Tests Passing (Priority Engine, Zero-Drift Jiggler, Procedural Coder, Path Sanitization, Financial Generator, 220+ Domains, DPAPI Checkpoints, App Discovery, Dynamic Workload Pruning, Workload Skipping Guards).
+* **Test Results**: 15/15 Tests Passing (Priority Engine, Zero-Drift Jiggler, Procedural Coder, Path Sanitization, Financial Generator, 220+ Domains, DPAPI Checkpoints, App Discovery, Dynamic Workload Pruning, Workload Skipping Guards, Dedicated Offline Coding & Excel Matrix).

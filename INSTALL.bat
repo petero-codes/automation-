@@ -33,14 +33,13 @@ echo   [1] Detect or install Python 3.10+
 echo   [2] Build an isolated virtual environment .venv
 echo   [3] Install all required dependencies
 echo   [4] Register the Interception kernel filter driver
-echo   [5] Create a desktop shortcut Loggy Bot
 echo ======================================================================
 echo.
 
 :: ----------------------------------------------------------------------
 :: 2. DETECT OR AUTO-INSTALL PYTHON
 :: ----------------------------------------------------------------------
-echo [1/4] Checking Python installation...
+echo [1/3] Checking Python installation...
 
 set "PYTHON_EXE="
 
@@ -101,7 +100,7 @@ echo.
 :: ----------------------------------------------------------------------
 :: 3. SETUP VIRTUAL ENVIRONMENT & INSTALL DEPENDENCIES
 :: ----------------------------------------------------------------------
-echo [2/4] Setting up virtual environment and dependencies...
+echo [2/3] Setting up virtual environment and dependencies...
 
 set "VENV_DIR=%PROJECT_ROOT%.venv"
 set "VENV_PY=%VENV_DIR%\Scripts\python.exe"
@@ -145,7 +144,7 @@ echo.
 :: ----------------------------------------------------------------------
 :: 4. REGISTER INTERCEPTION KERNEL FILTER DRIVER
 :: ----------------------------------------------------------------------
-echo [3/4] Configuring Interception kernel filter driver...
+echo [3/3] Configuring Interception kernel filter driver...
 
 set "INSTALLER_EXE="
 if exist "%PROJECT_ROOT%Interception\install-interception.exe" (
@@ -177,25 +176,11 @@ echo [✓] Interception filter driver registered.
 :SetupFinished
 echo.
 
-:: ----------------------------------------------------------------------
-:: 5. CREATE DESKTOP SHORTCUT
-:: ----------------------------------------------------------------------
-echo [4/4] Creating Desktop shortcut...
-
-set "SHORTCUT_TARGET=%PROJECT_ROOT%RUN.bat"
-set "SHORTCUT_WORKDIR=%PROJECT_ROOT%"
-
-if exist "%PROJECT_ROOT%..\RUN.bat" (
-    set "SHORTCUT_TARGET=%PROJECT_ROOT%..\RUN.bat"
-    set "SHORTCUT_WORKDIR=%PROJECT_ROOT%..\"
-)
-
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$ws = New-Object -ComObject WScript.Shell; $desk = [Environment]::GetFolderPath('Desktop'); $s = $ws.CreateShortcut((Join-Path $desk 'Loggy Bot.lnk')); $s.TargetPath = '%SHORTCUT_TARGET%'; $s.WorkingDirectory = '%SHORTCUT_WORKDIR%'; $s.Save()" >nul 2>&1
-echo [✓] Shortcut created on Desktop: "Loggy Bot"
-echo.
+:: Clean up any legacy desktop shortcut if present
+if exist "%USERPROFILE%\Desktop\Loggy Bot.lnk" del /f /q "%USERPROFILE%\Desktop\Loggy Bot.lnk" >nul 2>&1
 
 :: ----------------------------------------------------------------------
-:: 6. FINAL SUMMARY & ONE-TIME REBOOT PROMPT
+:: 5. FINAL SUMMARY & ONE-TIME REBOOT PROMPT
 :: ----------------------------------------------------------------------
 echo ======================================================================
 echo                     INSTALLATION SUCCESSFUL!
@@ -203,13 +188,11 @@ echo ======================================================================
 echo  [✓] Python environment configured (.venv)
 echo  [✓] All required packages installed
 echo  [✓] Interception kernel driver registered
-echo  [✓] Desktop shortcut created: "Loggy Bot"
 echo.
 echo  CRITICAL: Windows requires a ONE-TIME COMPUTER RESTART for the
 echo  hardware filter driver to bind to physical keyboard/mouse ports.
 echo.
-echo  After restarting, simply double-click RUN.bat (or your Desktop
-echo  shortcut) whenever you want to use the bot.
+echo  After restarting, simply double-click RUN.bat whenever you want to use the bot.
 echo ======================================================================
 echo.
 

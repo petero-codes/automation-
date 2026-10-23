@@ -224,10 +224,15 @@ class TestNextgenWorkforceEngine(unittest.TestCase):
                 task_financial_modeling: 5
             }
             sched = Scheduler(empty_weights)
-            # Must fall back to safe browser research and reading mode
-            self.assertGreaterEqual(len(sched.task_weights), 2)
-            self.assertIn(task_technical_research, sched.task_weights)
+            # Must preserve safe reading mode without launching browsers
             self.assertIn(task_reading_mode, sched.task_weights)
+
+    def test_dedicated_coding_and_excel_offline_matrix(self):
+        """Verifies dedicated offline Coding (VS Code) and Financial Modeling (Excel) configuration."""
+        import main
+        self.assertIn(task_software_engineering, main.TASK_WEIGHTS)
+        self.assertIn(task_financial_modeling, main.TASK_WEIGHTS)
+        self.assertEqual(len(main.TASK_WEIGHTS), 2)
 
     def test_workload_skipping_guards_when_apps_uninstalled(self):
         """Verifies task functions return False immediately if app is not installed (zero blind typing)."""
