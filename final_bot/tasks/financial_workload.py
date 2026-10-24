@@ -14,7 +14,12 @@ from core.window_manager import (
     wait_for_window,
     bind_thread_to_interactive_desktop,
 )
-from tasks.shared import is_excel_installed, get_excel_executable, open_app_via_run
+from tasks.shared import (
+    is_excel_installed,
+    get_excel_executable,
+    launch_or_focus_excel,
+    excel_go_to_cell,
+)
 from core.financial_generator import FinancialGenerator, FinancialModel, FinancialCell
 from core.checkpoint_manager import checkpoint_mgr
 from core.session_manager import session_mgr
@@ -29,69 +34,11 @@ def col_idx_to_letter(col_idx: int) -> str:
         result.append(chr(65 + remainder))
     return "".join(reversed(result))
 
-def launch_or_focus_excel(workbook_path: Optional[str] = None) -> bool:
-    """
-    Directly and reliably launches Microsoft Excel or brings an existing instance forward,
-    opening the target workbook if provided.
-    """
-    bind_thread_to_interactive_desktop()
-    target_titles = ["Excel", "Microsoft Excel"]
-
-    # 1. If Excel is already open, bring to front
-    if focus_window_by_title(target_titles):
-        log("[Financial Modeling] Microsoft Excel is already running; brought to front.")
-        return True
-
-    # 2. Try launching via Start menu
-    log("[Financial Modeling] Launching Microsoft Excel via Start Menu...")
-    open_app_via_run("excel")
-    time.sleep(2.0)
-
-    # 3. Direct process spawn fallback with workbook path
-    if not wait_for_window(target_titles, timeout=10.0):
-        excel_exe = get_excel_executable()
-        args = [excel_exe] if (excel_exe and os.path.isfile(excel_exe)) else ["cmd.exe", "/c", "start", "excel"]
-        if workbook_path and os.path.isfile(workbook_path):
-            args.append(workbook_path)
-        try:
-            import subprocess
-            subprocess.Popen(args)
-        except Exception as e:
-            log(f"[Financial Modeling] Launch error: {e}")
-
-    # 4. Wait for window to appear, focus, and verify
-    return wait_for_window(target_titles, timeout=15.0)
-
 def _navigate_cell(curr: Tuple[int, int], target: Tuple[int, int]):
-    """Navigates from current grid coordinate to target using arrow keys."""
-    curr_r, curr_c = curr
+    """Navigates from current grid coordinate to target using Excel Go-To dialog (F5)."""
     target_r, target_c = target
-
-    # Row navigation
-    d_r = target_r - curr_r
-    if d_r > 0:
-        for _ in range(d_r):
-            if state.is_stopped(): break
-            safe_press('down')
-            time.sleep(0.04)
-    elif d_r < 0:
-        for _ in range(-d_r):
-            if state.is_stopped(): break
-            safe_press('up')
-            time.sleep(0.04)
-
-    # Column navigation
-    d_c = target_c - curr_c
-    if d_c > 0:
-        for _ in range(d_c):
-            if state.is_stopped(): break
-            safe_press('right')
-            time.sleep(0.04)
-    elif d_c < 0:
-        for _ in range(-d_c):
-            if state.is_stopped(): break
-            safe_press('left')
-            time.sleep(0.04)
+    cell_ref = f"{col_idx_to_letter(target_c)}{target_r}"
+    excel_go_to_cell(cell_ref)
 
 def save_excel_checkpoint(
     model: FinancialModel,
@@ -348,11 +295,10 @@ def task_financial_modeling(duration: int) -> bool:
     time.sleep(random.uniform(0.8, 1.5))
 
     if not is_resuming:
-        # If opening a fresh Excel instance, select blank workbook
-        safe_press('enter')
-        time.sleep(random.uniform(0.8, 1.4))
-        # Initial Save As to establish workbook identity on disk and in COM
-        if workbook_path:
+        # If workbook was not pre-saved via COM, initialize on disk
+        if workbook_path and not os.path.exists(workbook_path):
+            safe_press('enter')
+            time.sleep(random.uniform(0.6, 1.0))
             hotkey('ctrl', 's')
             time.sleep(0.5)
             human_typing(workbook_path, wpm=150, typos=False)

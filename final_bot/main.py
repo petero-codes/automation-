@@ -96,8 +96,10 @@ def run_countdown(seconds: int, label: str = "Automation starting in", cancellab
     if os.environ.get("SKIP_COUNTDOWN") == "1":
         return True
 
-    # Ensure stop flag is clear so countdown does not self-abort
-    state.clear_stop()
+    if cancellable and state.is_stopped():
+        log(">>> Countdown aborted. HUMAN HAS CONTROL. <<<")
+        return False
+
     try:
         from core.priority_engine import priority_engine
         priority_engine.activate_grace_period(1.0)
@@ -175,6 +177,7 @@ def monitor_idle(mode: str = "both", start_now: bool = False):
 
     if start_now:
         log("[Nextgen Engine] Immediate execution mode requested (--now).")
+        state.clear_stop()
         if run_countdown(5, label="Starting workforce engine in", cancellable=True):
             log("======================================================================")
             log(">>> BOT TAKING CONTROL (Hands off mouse & keyboard) <<<")
@@ -266,6 +269,7 @@ def monitor_idle(mode: str = "both", start_now: bool = False):
                 inactivity_reached = idle_sec >= IDLE_TIMEOUT
                 if user_resume or inactivity_reached:
                     state.clear_resume()
+                    state.clear_stop()
                     if user_resume:
                         log("[Nextgen Engine] User started automation via dedicated toggle / console key.")
                     else:

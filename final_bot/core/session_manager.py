@@ -126,6 +126,11 @@ class SessionManager:
         self.state = SessionState.PAUSED
         state.request_stop()
         state.automation_active.clear()
+        try:
+            from core.window_manager import restore_console_window
+            restore_console_window()
+        except Exception:
+            pass
         log("======================================================================")
         log(">>> HUMAN HAS CONTROL <<<")
         log(f"[SessionManager] Automation yielded completely: {reason}")
@@ -138,6 +143,11 @@ class SessionManager:
         self.state = SessionState.INTERRUPTED
         state.request_stop()
         state.automation_active.clear()
+        try:
+            from core.window_manager import restore_console_window
+            restore_console_window()
+        except Exception:
+            pass
         cp = self.checkpoint_mgr.load_checkpoint()
         if cp:
             workload = cp.get("workload", "UNKNOWN")

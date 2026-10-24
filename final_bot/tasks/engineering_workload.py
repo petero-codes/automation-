@@ -18,58 +18,18 @@ from core.window_manager import (
 )
 from core.procedural_coder import ProceduralCoder, CodingTask
 from core.checkpoint_manager import checkpoint_mgr
-from tasks.shared import is_vscode_installed, get_vscode_executable, open_app_via_run
+from tasks.shared import (
+    is_vscode_installed,
+    get_vscode_executable,
+    launch_code_process,
+    launch_or_focus_vscode,
+)
 
 coder_instance = ProceduralCoder()
 
 def compute_file_hash(content: str) -> str:
     """Computes SHA-256 hash of file content for state verification."""
     return hashlib.sha256(content.encode('utf-8', errors='ignore')).hexdigest()
-
-def launch_or_focus_vscode(
-    workspace_dir: str,
-    file_path: Optional[str] = None,
-    line: int = 1,
-    col: int = 1
-) -> bool:
-    """
-    Directly and reliably launches Visual Studio Code or restores the correct workspace
-    and active file editor, positioning the cursor at the checkpointed line and column.
-    """
-    bind_thread_to_interactive_desktop()
-    target_titles = ["Visual Studio Code", "Code"]
-    vscode_exe = get_vscode_executable()
-
-    # 1. If VS Code is running, re-anchor workspace and file via CLI reuse-window (-r -g)
-    if focus_window_by_title(target_titles):
-        log("[Software Engineering] Visual Studio Code is running; restoring workspace & file.")
-        if vscode_exe and file_path and os.path.isfile(file_path):
-            try:
-                import subprocess
-                subprocess.Popen([vscode_exe, "-r", "-g", f"{file_path}:{line}:{col}"])
-                time.sleep(1.0)
-            except Exception as e:
-                log(f"[Software Engineering] CLI re-anchor notice: {e}")
-        return True
-
-    # 2. Try launching via Start menu
-    log(f"[Software Engineering] Launching VS Code for workspace: {workspace_dir}")
-    open_app_via_run("code")
-    time.sleep(2.0)
-
-    # 3. Direct process spawn fallback
-    if not wait_for_window(target_titles, timeout=10.0):
-        args = [vscode_exe, workspace_dir] if vscode_exe else ["cmd.exe", "/c", "code", workspace_dir]
-        if file_path and os.path.isfile(file_path):
-            args.extend(["-g", f"{file_path}:{line}:{col}"])
-        try:
-            import subprocess
-            subprocess.Popen(args)
-        except Exception as e:
-            log(f"[Software Engineering] Launch error: {e}")
-
-    # 4. Wait for window to appear, focus, and verify
-    return wait_for_window(target_titles, timeout=15.0)
 
 def save_vscode_checkpoint(
     task: CodingTask,
@@ -273,44 +233,53 @@ def task_software_engineering(duration: int) -> bool:
         lines = code_content.splitlines()
         start_line = 0
 
+        file_path = os.path.join(workspace_dir, filename)
+        try:
+            if not os.path.exists(file_path):
+                with open(file_path, "w", encoding="utf-8") as f:
+                    pass
+        except Exception as e:
+            log(f"[Software Engineering] File init notice: {e}")
+
+        vscode_exe = get_vscode_executable()
         if is_resuming and filename == resume_file and resume_line_idx >= 0:
             start_line = resume_line_idx + 1
             log(f"[Resume Controller] Resuming active file: {filename} from line {start_line + 1} of {len(lines)}")
-            # Switch to target file via Quick Open (Ctrl+P) to ensure correct editor tab
-            hotkey('ctrl', 'p')
-            time.sleep(0.4)
-            human_typing(filename, wpm=140, typos=False)
-            time.sleep(0.3)
-            safe_press('enter')
-            time.sleep(0.6)
+            if vscode_exe:
+                launch_code_process([vscode_exe, "-r", "-g", f"{file_path}:{start_line + 1}:{next_col + 1}"])
+                time.sleep(0.8)
+            else:
+                hotkey('ctrl', 'p')
+                time.sleep(0.4)
+                human_typing(filename, wpm=140, typos=False)
+                safe_press('enter')
+                time.sleep(0.6)
+                hotkey('ctrl', 'g')
+                time.sleep(0.3)
+                human_typing(f"{start_line + 1}:{next_col + 1}", wpm=140, typos=False)
+                safe_press('enter')
 
-            # Re-anchor editor cursor to exact line & column position via Go to Line
-            hotkey('ctrl', 'g')
-            time.sleep(0.3)
-            human_typing(f"{start_line + 1}:{next_col + 1}", wpm=140, typos=False)
-            safe_press('enter')
+            focus_window_by_title(target_titles)
+            maximize_active_window()
             time.sleep(0.2)
             safe_press('end')
             time.sleep(0.2)
             is_resuming = False
         else:
             log(f"[Software Engineering] Editing file: {filename}")
-            # Ensure physical file is initialized on disk in workspace
-            file_path = os.path.join(workspace_dir, filename)
-            try:
-                if not os.path.exists(file_path):
-                    with open(file_path, "w", encoding="utf-8") as f:
-                        pass
-            except Exception as e:
-                log(f"[Software Engineering] File init notice: {e}")
+            if vscode_exe:
+                launch_code_process([vscode_exe, "-r", file_path])
+                time.sleep(0.8)
+            else:
+                hotkey('ctrl', 'p')
+                time.sleep(0.4)
+                human_typing(filename, wpm=140, typos=False)
+                safe_press('enter')
+                time.sleep(0.8)
 
-            # Open file in VS Code via Quick Open (Ctrl+P) so it is properly path-anchored
-            hotkey('ctrl', 'p')
-            time.sleep(0.4)
-            human_typing(filename, wpm=140, typos=False)
+            focus_window_by_title(target_titles)
+            maximize_active_window()
             time.sleep(0.3)
-            safe_press('enter')
-            time.sleep(0.8)
 
         for idx in range(start_line, len(lines)):
             line = lines[idx]
