@@ -9,19 +9,8 @@ from core.logger import log
 _interactive_desktop_handle = None
 
 def bind_thread_to_interactive_desktop():
-    """
-    Ensures the calling thread is attached to the user's interactive desktop (WinSta0\\Default)
-    so window enumeration, focus, and input injection target the active screen.
-    """
-    global _interactive_desktop_handle
-    try:
-        GENERIC_ALL = 0x10000000
-        if not _interactive_desktop_handle:
-            _interactive_desktop_handle = ctypes.windll.user32.OpenInputDesktop(0, False, GENERIC_ALL)
-        if _interactive_desktop_handle:
-            ctypes.windll.user32.SetThreadDesktop(_interactive_desktop_handle)
-    except Exception:
-        pass
+    """No-op on interactive desktop sessions to preserve input thread integrity."""
+    pass
 
 def get_foreground_title() -> str:
     bind_thread_to_interactive_desktop()
@@ -100,24 +89,22 @@ def focus_window_by_title(fragments) -> bool:
         
         for frag in fragments:
             if frag.lower() in current_title:
-                foreground_hwnd = user32.GetForegroundWindow()
-                
-                if foreground_hwnd != hwnd:
-                    foreground_thread = user32.GetWindowThreadProcessId(foreground_hwnd, None)
-                    target_thread = user32.GetWindowThreadProcessId(hwnd, None)
-                    
-                    if foreground_thread and target_thread and (foreground_thread != target_thread):
-                        user32.AttachThreadInput(target_thread, foreground_thread, True)
-                        user32.BringWindowToTop(hwnd)
-                        user32.ShowWindow(hwnd, 9) # SW_RESTORE
-                        user32.SetForegroundWindow(hwnd)
-                        user32.AttachThreadInput(target_thread, foreground_thread, False)
-                    else:
-                        user32.BringWindowToTop(hwnd)
-                        user32.ShowWindow(hwnd, 9) # SW_RESTORE
-                        user32.SetForegroundWindow(hwnd)
-                else:
+                # 1. Restore window if minimized
+                if user32.IsIconic(hwnd):
                     user32.ShowWindow(hwnd, 9) # SW_RESTORE
+                else:
+                    user32.ShowWindow(hwnd, 5) # SW_SHOW
+                
+                # 2. Bring window to top
+                user32.BringWindowToTop(hwnd)
+                
+                # 3. Safe Win32 SetForegroundWindow with Alt-event privilege bypass
+                # Grants foreground activation without merging queues or freezing Explorer
+                VK_MENU = 0x12
+                KEYEVENTF_KEYUP = 0x0002
+                user32.keybd_event(VK_MENU, 0, 0, 0)
+                user32.SetForegroundWindow(hwnd)
+                user32.keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, 0)
                 
                 found[0] = True
                 return False # Stop enumerating
