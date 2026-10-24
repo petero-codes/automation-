@@ -70,16 +70,18 @@ def run_environment_discovery(mode: str = "both"):
     log("[Discovery] Network Mode       : 100% Offline (Zero external network calls)")
     log("======================================================================")
 
-def monitor_idle(mode: str = "both"):
+def monitor_idle(mode: str = "both", start_now: bool = False):
     """
     Main supervisory loop:
       - When an interrupted session exists: blocks execution until recovery decision is made.
-      - For fresh sessions: starts when idle threshold is reached or when [F8]/[PAUSE] is pressed.
+      - For fresh sessions: starts when idle threshold is reached, [F8]/[PAUSE] is pressed, or --now flag passed.
       - When PAUSED by human interaction: waits STRICTLY for explicit user resume ([F8] or [PAUSE]).
         It NEVER auto-resumes after an idle timeout once paused.
+      - When TERMINATED: exits supervisor loop cleanly.
     """
     log(f"[Nextgen Engine] Armed & Ready. Initial launch triggers after {IDLE_TIMEOUT}s idle or [F8]/[PAUSE].")
     log("[Nextgen Engine] Instant Yield Active: Move mouse (>25px), Click (L/R/M), [PAUSE], [F8], or Double-ESC.")
+    log("[Nextgen Engine] Emergency Stop: [Ctrl+Pause], [Shift+Pause], [Ctrl+F8], or [Ctrl+C] in console.")
 
     # Filter task weights based on selected mode
     filtered_weights = {}
@@ -95,8 +97,19 @@ def monitor_idle(mode: str = "both"):
 
     first_start_done = False
 
+    if start_now:
+        log("[Nextgen Engine] Immediate execution requested (--now). Launching workload directly...")
+        first_start_done = True
+        session_mgr.mark_active()
+        threading.Thread(target=sched.run, daemon=True).start()
+
     while True:
         time.sleep(0.5)
+
+        # Clean exit when session is terminated
+        if session_mgr.is_terminated():
+            log("[Nextgen Engine] Session terminated. Exiting supervisor loop.")
+            break
 
         if not state.automation_active.is_set():
             # If session is interrupted from crash/unexpected exit, require recovery decision
@@ -150,6 +163,11 @@ def parse_args():
         action="store_true",
         help="Discard any interrupted session and start fresh"
     )
+    parser.add_argument(
+        "--now",
+        action="store_true",
+        help="Start automation immediately without waiting for the idle timeout"
+    )
     return parser.parse_args()
 
 def main():
@@ -185,7 +203,7 @@ def main():
     run_environment_discovery(mode=args.mode)
 
     try:
-        monitor_idle(mode=args.mode)
+        monitor_idle(mode=args.mode, start_now=args.now)
     except KeyboardInterrupt:
         log("[Nextgen Engine] Terminated cleanly by user via KeyboardInterrupt.")
         session_mgr.terminate_session("KeyboardInterrupt")

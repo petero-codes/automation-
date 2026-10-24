@@ -182,6 +182,20 @@ class PriorityEngine:
                 kb_info = ctypes.cast(lParam, ctypes.POINTER(KBDLLHOOKSTRUCT)).contents
                 vk = kb_info.vkCode
 
+                # Check modifier keys for Emergency Stop
+                ctrl_down = (user32.GetAsyncKeyState(0x11) & 0x8000) != 0   # VK_CONTROL
+                shift_down = (user32.GetAsyncKeyState(0x10) & 0x8000) != 0  # VK_SHIFT
+
+                # Emergency Stop: Ctrl+PAUSE, Shift+PAUSE, Ctrl+F8, or VK_CANCEL (0x03 Ctrl+Break)
+                if (vk in (VK_PAUSE, VK_F8) and (ctrl_down or shift_down)) or vk == 0x03:
+                    log("[PriorityEngine] EMERGENCY STOP triggered via hotkey.")
+                    try:
+                        from core.session_manager import session_mgr
+                        session_mgr.terminate_session("Emergency Stop Hotkey")
+                    except Exception as e:
+                        log(f"[PriorityEngine] Emergency stop note: {e}")
+                    return user32.CallNextHookEx(self._keyboard_hook, nCode, wParam, lParam)
+
                 # 1. Dedicated Toggle Keys: [PAUSE] or [F8] (Toggles Pause / Resume)
                 if vk in (VK_PAUSE, VK_F8):
                     key_label = "[PAUSE]" if vk == VK_PAUSE else "[F8]"
