@@ -84,6 +84,7 @@ class PriorityEngine:
         self.last_esc_time: float = 0.0
         self.esc_tap_count: int = 0
         self.last_yield_latency_ms: Optional[float] = None
+        self._last_yield_reason: str = "Human Input"
         
         self._mouse_hook = None
         self._keyboard_hook = None
@@ -101,40 +102,47 @@ class PriorityEngine:
         self._keyboard_proc = HOOKPROC(self._low_level_keyboard_proc)
 
     def _cleanup_loop(self):
-        """Persistent background worker that safely cleans hardware input without blocking hook pump."""
+        """Persistent background worker that safely cleans hardware input and persists logs without blocking hook pump."""
         while True:
             self._cleanup_trigger.wait()
             self._cleanup_trigger.clear()
+            reason = self._last_yield_reason or "Human Input"
             try:
                 emergency_cleanup()
             except Exception as e:
-                log(f"[PriorityEngine] Cleanup note: {e}")
+                pass
+            try:
+                from core.session_manager import session_mgr
+                session_mgr.mark_paused(reason)
+            except Exception:
+                pass
+            lat_str = f" in {self.last_yield_latency_ms:.2f}ms" if self.last_yield_latency_ms is not None else ""
+            log(f"[PriorityEngine] Human input detected ({reason}). Automation yielded{lat_str}.")
 
     def trigger_instant_yield(self, reason: str, event_time_ms: Optional[int] = None) -> float:
         """
         Halts automation immediately upon human input and restores raw human control.
-        Measures and records exact execution latency via high-resolution performance counters.
-        Returns measured latency in milliseconds.
+        Executes in microsecond time by delegating I/O and cleanup to background worker.
         """
         t_start = time.perf_counter()
         if not state.automation_active.is_set():
             return 0.0
 
-        # Halt automation and mark session paused immediately
+        # Fast path: immediately halt input injection flags and update session state
         state.request_stop()
         state.automation_active.clear()
         try:
-            from core.session_manager import session_mgr
-            session_mgr.mark_paused(reason)
+            from core.session_manager import session_mgr, SessionState
+            session_mgr.state = SessionState.PAUSED
         except Exception:
             pass
 
         t_end = time.perf_counter()
         latency_ms = (t_end - t_start) * 1000.0
         self.last_yield_latency_ms = latency_ms
-        log(f"[PriorityEngine] Human input detected ({reason}). Automation yielded in {latency_ms:.2f}ms.")
+        self._last_yield_reason = reason
 
-        # Signal persistent background worker to release held keys/mouse buttons
+        # Signal persistent background worker to release held keys and flush logs to disk
         self._cleanup_trigger.set()
 
         return latency_ms
@@ -145,34 +153,35 @@ class PriorityEngine:
 
     def _low_level_mouse_proc(self, nCode: int, wParam: wintypes.WPARAM, lParam: wintypes.LPARAM) -> int:
         if nCode >= 0:
+            # If automation is not active, return immediately with zero calculation overhead
+            if not state.automation_active.is_set():
+                return user32.CallNextHookEx(self._mouse_hook, nCode, wParam, lParam)
+
             if not self._is_bot_injecting():
-                if state.automation_active.is_set():
-                    info = ctypes.cast(lParam, ctypes.POINTER(MSLLHOOKSTRUCT)).contents
-                    # 1. Mouse Button Clicks (Left, Right, Middle)
-                    if wParam in (WM_LBUTTONDOWN, WM_RBUTTONDOWN, WM_MBUTTONDOWN):
-                        btn_name = {
-                            WM_LBUTTONDOWN: "Left Click",
-                            WM_RBUTTONDOWN: "Right Click",
-                            WM_MBUTTONDOWN: "Middle Click"
-                        }.get(wParam, "Button Click")
-                        self.trigger_instant_yield(f"Hardware {btn_name}", event_time_ms=info.time)
-                    
-                    # 2. Mouse Displacement (> 25px)
-                    elif wParam == WM_MOUSEMOVE:
-                        cur_pos = (info.pt.x, info.pt.y)
-                        if self.last_mouse_pos is not None:
-                            dist = math.hypot(cur_pos[0] - self.last_mouse_pos[0], cur_pos[1] - self.last_mouse_pos[1])
-                            if dist >= self.displacement_threshold:
-                                self.trigger_instant_yield(f"Mouse Displacement ({dist:.1f}px > {self.displacement_threshold}px)", event_time_ms=info.time)
-                        self.last_mouse_pos = cur_pos
-                else:
-                    if wParam == WM_MOUSEMOVE:
-                        info = ctypes.cast(lParam, ctypes.POINTER(MSLLHOOKSTRUCT)).contents
-                        self.last_mouse_pos = (info.pt.x, info.pt.y)
+                info = ctypes.cast(lParam, ctypes.POINTER(MSLLHOOKSTRUCT)).contents
+                # 1. Mouse Button Clicks (Left, Right, Middle)
+                if wParam in (WM_LBUTTONDOWN, WM_RBUTTONDOWN, WM_MBUTTONDOWN):
+                    btn_name = {
+                        WM_LBUTTONDOWN: "Left Click",
+                        WM_RBUTTONDOWN: "Right Click",
+                        WM_MBUTTONDOWN: "Middle Click"
+                    }.get(wParam, "Button Click")
+                    self.trigger_instant_yield(f"Hardware {btn_name}", event_time_ms=info.time)
+                
+                # 2. Mouse Displacement (> 25px)
+                elif wParam == WM_MOUSEMOVE:
+                    cur_pos = (info.pt.x, info.pt.y)
+                    if self.last_mouse_pos is not None:
+                        dist = math.hypot(cur_pos[0] - self.last_mouse_pos[0], cur_pos[1] - self.last_mouse_pos[1])
+                        if dist >= self.displacement_threshold:
+                            self.trigger_instant_yield(f"Mouse Displacement ({dist:.1f}px > {self.displacement_threshold}px)", event_time_ms=info.time)
+                    self.last_mouse_pos = cur_pos
             else:
                 # Update pos during bot moves without tripping displacement check
                 info = ctypes.cast(lParam, ctypes.POINTER(MSLLHOOKSTRUCT)).contents
                 self.last_mouse_pos = (info.pt.x, info.pt.y)
+
+        return user32.CallNextHookEx(self._mouse_hook, nCode, wParam, lParam)
 
         return user32.CallNextHookEx(self._mouse_hook, nCode, wParam, lParam)
 

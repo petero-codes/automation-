@@ -132,7 +132,8 @@ def focus_window_by_title(fragments) -> bool:
 
 def maximize_active_window(retries=3) -> bool:
     """
-    Attempts to maximize the foreground window and verifies if it is zoomed.
+    Attempts to maximize the foreground window using Win32 ShowWindow(SW_MAXIMIZE)
+    with keyboard fallback, and verifies if it is zoomed.
     """
     if platform.system() != 'Windows':
         return False
@@ -144,15 +145,23 @@ def maximize_active_window(retries=3) -> bool:
         
         hwnd = ctypes.windll.user32.GetForegroundWindow()
         if not hwnd:
-            time.sleep(0.5)
+            time.sleep(0.3)
             continue
             
         if is_window_zoomed(hwnd):
             log("Verification Success: Window is already maximized.")
             return True
             
+        # 1. Direct Win32 ShowWindow(SW_MAXIMIZE = 3) - instant, zero keystroke injection
+        ctypes.windll.user32.ShowWindow(hwnd, 3)
+        time.sleep(0.3)
+        if is_window_zoomed(hwnd):
+            log("Verification Success: Window successfully maximized via ShowWindow(SW_MAXIMIZE).")
+            return True
+            
+        # 2. Fallback hotkey
         hotkey('win', 'up')
-        time.sleep(1.0)
+        time.sleep(0.5)
         
         if is_window_zoomed(hwnd):
             log("Verification Success: Window successfully maximized via win+up.")
@@ -160,7 +169,7 @@ def maximize_active_window(retries=3) -> bool:
         else:
             log(f"Verification Retry {attempt+1}: Window failed to maximize, trying again.")
             
-    log("Verification Failed: Could not maximize window after all retries.")
+    log("Verification Notice: Window could not be maximized or does not support zoom.")
     return False
 
 def close_app_safely():

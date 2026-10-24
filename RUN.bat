@@ -83,7 +83,12 @@ echo.
 
 cd /d "%PROJECT_ROOT%final_bot"
 
-"%VENV_PY%" "main.py" %*
+if "%~1"=="" (
+    echo [Nextgen Engine] Starting in immediate execution mode...
+    "%VENV_PY%" "main.py" --now
+) else (
+    "%VENV_PY%" "main.py" %*
+)
 
 echo.
 echo Automation stopped. Press any key to exit.

@@ -25,7 +25,7 @@ def safe_key_up(k):
     with state.injecting_key:
         try:
             import interception
-            interception.key_up(k)
+            interception.key_up(k, delay=0)
         except Exception as e:
             log(f"Driver error (key_up {k}): {e}")
 
