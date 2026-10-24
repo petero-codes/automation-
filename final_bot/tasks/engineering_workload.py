@@ -295,8 +295,22 @@ def task_software_engineering(duration: int) -> bool:
             is_resuming = False
         else:
             log(f"[Software Engineering] Editing file: {filename}")
-            hotkey('ctrl', 'n')  # New tab in VS Code
-            time.sleep(random.uniform(0.6, 1.2))
+            # Ensure physical file is initialized on disk in workspace
+            file_path = os.path.join(workspace_dir, filename)
+            try:
+                if not os.path.exists(file_path):
+                    with open(file_path, "w", encoding="utf-8") as f:
+                        pass
+            except Exception as e:
+                log(f"[Software Engineering] File init notice: {e}")
+
+            # Open file in VS Code via Quick Open (Ctrl+P) so it is properly path-anchored
+            hotkey('ctrl', 'p')
+            time.sleep(0.4)
+            human_typing(filename, wpm=140, typos=False)
+            time.sleep(0.3)
+            safe_press('enter')
+            time.sleep(0.8)
 
         for idx in range(start_line, len(lines)):
             line = lines[idx]
@@ -304,6 +318,7 @@ def task_software_engineering(duration: int) -> bool:
                 # Interrupted: Checkpoint exact file & line index without repeating!
                 prev_completed = idx - 1 if idx > 0 else 0
                 save_vscode_checkpoint(task, workspace_dir, filename, prev_completed, lines, col_idx=len(line))
+                hotkey('ctrl', 's')
                 return False
 
             stripped = line.strip()
@@ -312,11 +327,13 @@ def task_software_engineering(duration: int) -> bool:
                 if state.stop_automation_event.wait(random.uniform(1.0, 2.5)):
                     prev_completed = idx - 1 if idx > 0 else 0
                     save_vscode_checkpoint(task, workspace_dir, filename, prev_completed, lines, col_idx=len(line))
+                    hotkey('ctrl', 's')
                     return False
             elif stripped == '' and random.random() < 0.35:
                 if state.stop_automation_event.wait(random.uniform(0.4, 1.2)):
                     prev_completed = idx - 1 if idx > 0 else 0
                     save_vscode_checkpoint(task, workspace_dir, filename, prev_completed, lines, col_idx=len(line))
+                    hotkey('ctrl', 's')
                     return False
 
             # Handle indentation via tabs

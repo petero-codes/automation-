@@ -322,6 +322,7 @@ def task_financial_modeling(duration: int) -> bool:
 
         user_profile = os.environ.get("USERPROFILE", "C:\\Users\\Default")
         models_dir = os.path.join(user_profile, "Desktop", "Financial_Models")
+        workbook_path = os.path.join(models_dir, f"{model.model_name}.xlsx")
         try:
             os.makedirs(models_dir, exist_ok=True)
         except Exception as e:
@@ -350,6 +351,14 @@ def task_financial_modeling(duration: int) -> bool:
         # If opening a fresh Excel instance, select blank workbook
         safe_press('enter')
         time.sleep(random.uniform(0.8, 1.4))
+        # Initial Save As to establish workbook identity on disk and in COM
+        if workbook_path:
+            hotkey('ctrl', 's')
+            time.sleep(0.5)
+            human_typing(workbook_path, wpm=150, typos=False)
+            time.sleep(0.3)
+            safe_press('enter')
+            time.sleep(0.8)
     else:
         # Reacquire exact workbook, worksheet, and target cell by application state
         reacquired, reacq_msg, current_r, current_c = reacquire_excel_application_state(
