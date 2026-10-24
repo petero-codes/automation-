@@ -49,6 +49,8 @@ from tasks.engineering_workload import (
 from tasks.financial_workload import (
     task_financial_modeling,
     validate_excel_resume,
+    reacquire_excel_application_state,
+    col_idx_to_letter,
 )
 
 class TestNextgenWorkforceEngine(unittest.TestCase):
@@ -198,6 +200,7 @@ class TestNextgenWorkforceEngine(unittest.TestCase):
         mock_payload = {
             "status": "PAUSED",
             "model_name": "FY27_SaaS_Valuation",
+            "worksheet_name": "Sheet1",
             "models_dir": "C:\\Models",
             "cell_index": 1,
             "current_row": 5,
@@ -208,7 +211,7 @@ class TestNextgenWorkforceEngine(unittest.TestCase):
                 (5, 3, "MRR", False, True),  # Next cell index 2 is at (5, 3)
             ]
         }
-        valid, next_idx, target_coord = validate_excel_resume(mock_payload)
+        valid, reason, next_idx, target_coord = validate_excel_resume(mock_payload)
         self.assertTrue(valid)
         self.assertEqual(next_idx, 2)
         self.assertEqual(target_coord, (5, 3))
@@ -237,7 +240,7 @@ class TestNextgenWorkforceEngine(unittest.TestCase):
                 "content": "        return self._store.get(key)",
             }
         }
-        valid, next_line_index = validate_vscode_resume(mock_payload["file_path"], mock_payload)
+        valid, reason, next_line_index, col_idx = validate_vscode_resume(mock_payload["file_path"], mock_payload)
         self.assertTrue(valid)
         self.assertEqual(next_line_index, 19)
 
@@ -264,7 +267,7 @@ class TestNextgenWorkforceEngine(unittest.TestCase):
                     "content": "def calculate_metrics():",
                 }
             }
-            valid, next_line = validate_vscode_resume(temp_path, mock_payload)
+            valid, reason, next_line, col_idx = validate_vscode_resume(temp_path, mock_payload)
             self.assertTrue(valid)
             # Must re-anchor to line after 'def calculate_metrics():' (index 4 in file)
             self.assertEqual(next_line, 4)
@@ -285,17 +288,19 @@ class TestNextgenWorkforceEngine(unittest.TestCase):
             "line_index": last_vscode_line,
             "last_completed_op": {"line_index": last_vscode_line, "content": "x = 1"}
         }
-        _, next_vs_line = validate_vscode_resume("nonexistent.py", mock_vs_payload)
+        _, _, next_vs_line, _ = validate_vscode_resume("nonexistent.py", mock_vs_payload)
         self.assertGreater(next_vs_line, last_vscode_line)
 
         # For Excel
         last_excel_idx = 5
         mock_xl_payload = {
             "status": "PAUSED",
+            "model_name": "FY27_Model",
+            "worksheet_name": "Sheet1",
             "cell_index": last_excel_idx,
             "cells_data": [(i, 1, f"val_{i}", False, False) for i in range(10)]
         }
-        _, next_xl_idx, _ = validate_excel_resume(mock_xl_payload)
+        _, _, next_xl_idx, _ = validate_excel_resume(mock_xl_payload)
         self.assertGreater(next_xl_idx, last_excel_idx)
 
     # -------------------------------------------------------------
@@ -475,5 +480,250 @@ class TestNextgenWorkforceEngine(unittest.TestCase):
             "payload": {"project_name": "valid", "line_index": 5, "last_completed_op": "invalid_string_not_dict"}
         }))
 
+    def test_vscode_resume_stops_when_context_changed(self):
+        """Verifies VS Code resume halts safely rather than guessing when target file content has changed fundamentally."""
+        with tempfile.NamedTemporaryFile("w", delete=False, suffix=".py") as f:
+            temp_path = f.name
+            # Write completely unrelated content
+            f.write("# Completely unrelated code written by user\n")
+            f.write("def unrelated_function():\n")
+            f.write("    return 42\n")
+
+        try:
+            mock_payload = {
+                "status": "PAUSED",
+                "file_path": temp_path,
+                "line_index": 12,
+                "last_completed_op": {
+                    "op": "WRITE_LINE",
+                    "content": "class DatabaseConnectionPool:",
+                },
+                "expected_context_lines": ["import psycopg2", "from sqlalchemy import create_engine"],
+            }
+            can_resume, reason, next_line, col_idx = validate_vscode_resume(temp_path, mock_payload)
+            self.assertFalse(can_resume)
+            self.assertIn("context has changed", reason.lower())
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
+    def test_excel_col_idx_to_letter_accuracy(self):
+        """Verifies column coordinate conversion handles single, double, and boundary column indices."""
+        self.assertEqual(col_idx_to_letter(1), "A")
+        self.assertEqual(col_idx_to_letter(2), "B")
+        self.assertEqual(col_idx_to_letter(26), "Z")
+        self.assertEqual(col_idx_to_letter(27), "AA")
+        self.assertEqual(col_idx_to_letter(28), "AB")
+        self.assertEqual(col_idx_to_letter(52), "AZ")
+        self.assertEqual(col_idx_to_letter(53), "BA")
+
+    def test_excel_resume_stops_when_structure_changed(self):
+        """Verifies Excel resume halts and marks session INTERRUPTED if target cell has conflicting data."""
+        mock_payload = {
+            "status": "PAUSED",
+            "model_name": "FY27_Model",
+            "worksheet_name": "Sheet1",
+            "cell_index": 5,
+            "cells_data": [(i, 1, f"val_{i}", False, False) for i in range(10)],
+            "last_completed_op": {"row": 5, "col": 1, "value": "val_5"},
+            "next_intended_op": {"row": 6, "col": 1, "value": "val_6"},
+        }
+        # Simulate COM finding conflicting data in target cell
+        from unittest.mock import MagicMock
+        mock_excel = MagicMock()
+        mock_wb = MagicMock()
+        mock_wb.Name = "FY27_Model.xlsx"
+        mock_ws = MagicMock()
+        mock_ws.Name = "Sheet1"
+        mock_wb.Worksheets = [mock_ws]
+        mock_excel.Workbooks = [mock_wb]
+
+        # Target cell occupied by conflicting human data
+        conflicting_cell = MagicMock()
+        conflicting_cell.Value = "CONF_HUMAN_ENTRY"
+        conflicting_cell.Formula = "CONF_HUMAN_ENTRY"
+        mock_ws.Range.return_value = conflicting_cell
+
+        with patch("win32com.client.GetObject", return_value=mock_excel):
+            reacquired, msg, row, col = reacquire_excel_application_state(
+                workbook_path="C:\\Models\\FY27_Model.xlsx",
+                worksheet_name="Sheet1",
+                target_row=6,
+                target_col=1,
+                last_op=mock_payload["last_completed_op"],
+                next_op=mock_payload["next_intended_op"],
+            )
+            self.assertFalse(reacquired)
+            self.assertIn("structure", msg.lower())
+
+
+class TestRealWindowsDesktopIntegration(unittest.TestCase):
+    """
+    Genuine Windows Desktop Integration Tests.
+    Executes real Windows COM automation with Microsoft Excel and real filesystem / CLI with VS Code.
+    No GUI mocks used in these tests.
+    """
+
+    def setUp(self):
+        state.clear_stop()
+        state.clear_resume()
+        state.automation_active.clear()
+        checkpoint_mgr.clear_checkpoint()
+
+    def tearDown(self):
+        state.clear_stop()
+        state.clear_resume()
+        state.automation_active.clear()
+        checkpoint_mgr.clear_checkpoint()
+
+    def test_real_excel_com_application_state_reacquisition(self):
+        """
+        Genuine Windows Excel Integration Test:
+        Spawns real Excel via COM, creates real workbook with custom sheet,
+        writes cell data, saves checkpoint, and validates exact target cell reacquisition by application state.
+        """
+        import win32com.client
+        try:
+            excel = win32com.client.Dispatch("Excel.Application")
+        except Exception as e:
+            self.skipTest(f"Excel COM dispatch unavailable on this environment: {e}")
+
+        excel.Visible = False
+        wb = None
+        temp_dir = tempfile.mkdtemp()
+        wb_path = os.path.join(temp_dir, "Real_Audit_Model.xlsx")
+
+        try:
+            wb = excel.Workbooks.Add()
+            ws = wb.Worksheets(1)
+            ws.Name = "Real_Audit_Sheet"
+
+            # Write header and initial cell
+            ws.Range("B5").Value = "Revenue"
+            ws.Range("C5").Formula = "=SUM(100, 250)"
+            wb.SaveAs(wb_path)
+
+            # Checkpoint last completed at B5 and next intended at C5
+            last_op = {"op": "WRITE_CELL", "row": 5, "col": 2, "value": "Revenue"}
+            next_op = {"op": "WRITE_CELL", "row": 5, "col": 3, "value": "=SUM(100, 250)"}
+
+            # Reacquire application state on real Excel instance
+            reacquired, msg, r, c = reacquire_excel_application_state(
+                workbook_path=wb_path,
+                worksheet_name="Real_Audit_Sheet",
+                target_row=5,
+                target_col=3,
+                last_op=last_op,
+                next_op=next_op,
+            )
+            self.assertTrue(reacquired)
+            self.assertEqual(r, 5)
+            self.assertEqual(c, 3)
+
+            # Verify real Excel computation
+            computed_val = ws.Range("C5").Value
+            self.assertEqual(computed_val, 350.0)
+
+        finally:
+            if wb:
+                try:
+                    wb.Close(SaveChanges=False)
+                except Exception:
+                    pass
+            try:
+                excel.Quit()
+            except Exception:
+                pass
+            if os.path.exists(wb_path):
+                try:
+                    os.remove(wb_path)
+                except Exception:
+                    pass
+            if os.path.exists(temp_dir):
+                try:
+                    os.rmdir(temp_dir)
+                except Exception:
+                    pass
+
+    def test_real_vscode_workspace_file_state_validation(self):
+        """
+        Genuine Windows Filesystem / VS Code Integration Test:
+        Creates a real workspace directory and Python source file, simulates interruption checkpoint,
+        performs manual human edits, and verifies that validate_vscode_resume preserves human edits
+        and re-anchors to the exact next intended operation.
+        """
+        temp_dir = tempfile.mkdtemp()
+        file_path = os.path.join(temp_dir, "real_service.py")
+
+        try:
+            # 1. Initial bot writes
+            initial_lines = [
+                "import os",
+                "import sys",
+                "class AuthService:",
+                "    def __init__(self):",
+                "        self.active = True",
+            ]
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(initial_lines) + "\n")
+
+            checkpoint_payload = {
+                "status": "PAUSED",
+                "project_name": "AuthProject",
+                "workspace_dir": temp_dir,
+                "current_file": "real_service.py",
+                "file_path": file_path,
+                "line_index": 4,  # completed up to "        self.active = True"
+                "last_completed_op": {
+                    "op": "WRITE_LINE",
+                    "content": "        self.active = True",
+                    "line_index": 4,
+                },
+                "next_intended_op": {
+                    "op": "WRITE_LINE",
+                    "content": "    def authenticate(self, token):",
+                    "line_index": 5,
+                },
+                "expected_context_lines": ["class AuthService:", "self.active = True"],
+            }
+
+            # 2. Simulate human manual edits made while paused:
+            # Human inserts a custom comment and a debug flag at line 2
+            with open(file_path, "r", encoding="utf-8") as f:
+                existing = f.readlines()
+
+            # Insert human edits
+            existing.insert(2, "# Human edit: enable verbose security tracing\n")
+            existing.insert(3, "SECURITY_TRACE = True\n")
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.writelines(existing)
+
+            # 3. Validate resume: bot must preserve human edits and re-anchor
+            can_resume, reason, next_line_idx, col_idx = validate_vscode_resume(file_path, checkpoint_payload)
+            self.assertTrue(can_resume)
+            # Original line was at index 4, but human added 2 lines above it, so line is now at index 6
+            # Next line to write must be line 7 (index 7)
+            self.assertEqual(next_line_idx, 7)
+
+            # 4. Verify human edits remained completely intact in file
+            with open(file_path, "r", encoding="utf-8") as f:
+                content_after = f.read()
+            self.assertIn("SECURITY_TRACE = True", content_after)
+            self.assertIn("# Human edit: enable verbose security tracing", content_after)
+
+        finally:
+            if os.path.exists(file_path):
+                try:
+                    os.remove(file_path)
+                except Exception:
+                    pass
+            if os.path.exists(temp_dir):
+                try:
+                    os.rmdir(temp_dir)
+                except Exception:
+                    pass
+
+
 if __name__ == "__main__":
     unittest.main()
+

@@ -17,13 +17,22 @@ from core.window_manager import (
 from tasks.shared import is_excel_installed, get_excel_executable, open_app_via_run
 from core.financial_generator import FinancialGenerator, FinancialModel, FinancialCell
 from core.checkpoint_manager import checkpoint_mgr
+from core.session_manager import session_mgr
 
 financial_gen = FinancialGenerator()
+
+def col_idx_to_letter(col_idx: int) -> str:
+    """Converts 1-based column index (1, 2, 27) to Excel column letters ('A', 'B', 'AA')."""
+    result = []
+    while col_idx > 0:
+        col_idx, remainder = divmod(col_idx - 1, 26)
+        result.append(chr(65 + remainder))
+    return "".join(reversed(result))
 
 def launch_or_focus_excel(workbook_path: Optional[str] = None) -> bool:
     """
     Directly and reliably launches Microsoft Excel or brings an existing instance forward,
-    then verifies window visibility and focus.
+    opening the target workbook if provided.
     """
     bind_thread_to_interactive_desktop()
     target_titles = ["Excel", "Microsoft Excel"]
@@ -38,7 +47,7 @@ def launch_or_focus_excel(workbook_path: Optional[str] = None) -> bool:
     open_app_via_run("excel")
     time.sleep(2.0)
 
-    # 3. If still not appeared, try direct process spawn fallback
+    # 3. Direct process spawn fallback with workbook path
     if not wait_for_window(target_titles, timeout=10.0):
         excel_exe = get_excel_executable()
         args = [excel_exe] if (excel_exe and os.path.isfile(excel_exe)) else ["cmd.exe", "/c", "start", "excel"]
@@ -103,6 +112,7 @@ def save_excel_checkpoint(
         "col": cell.col,
         "value": cell.value,
         "is_formula": cell.is_formula,
+        "cell_ref": f"{col_idx_to_letter(cell.col)}{cell.row}",
     }
     next_op = {
         "op": "WRITE_CELL",
@@ -111,6 +121,7 @@ def save_excel_checkpoint(
         "col": next_cell.col if next_cell else None,
         "value": next_cell.value if next_cell else None,
         "is_formula": next_cell.is_formula if next_cell else None,
+        "cell_ref": f"{col_idx_to_letter(next_cell.col)}{next_cell.row}" if next_cell else None,
     } if next_cell else None
 
     checkpoint_payload = {
@@ -129,35 +140,130 @@ def save_excel_checkpoint(
         "interrupted_at": time.time(),
     }
     checkpoint_mgr.save_checkpoint("FINANCIAL_MODELING", checkpoint_payload)
-    target_str = f"R{next_cell.row}C{next_cell.col}" if next_cell else "Complete"
+    target_str = next_op.get("cell_ref", "Complete") if next_op else "Complete"
     log(f"[Resume Controller] Checkpointed exact Excel position: {model.model_name} at cell ({cell.row}, {cell.col}) [Next: {target_str}]")
 
-def validate_excel_resume(checkpoint_payload: Dict[str, Any]) -> tuple[bool, int, Tuple[int, int]]:
+def reacquire_excel_application_state(
+    workbook_path: str,
+    worksheet_name: str,
+    target_row: int,
+    target_col: int,
+    last_op: Optional[Dict[str, Any]] = None,
+    next_op: Optional[Dict[str, Any]] = None,
+) -> Tuple[bool, str, int, int]:
     """
-    Validates Excel checkpoint and ensures next operation does NOT repeat completed cell writes.
-    Returns (valid: bool, next_cell_idx: int, target_coord: (row, col)).
+    Reacquires exact workbook, worksheet, and target cell by Excel application state.
+    Validates workbook structure and prevents duplicate writes/formula execution.
+    If structure has changed and target cannot be safely identified, returns False to request recovery decision.
+    """
+    target_ref = f"{col_idx_to_letter(target_col)}{target_row}"
+
+    # 1. Attempt programmatic Application State reacquisition via COM (Windows pywin32)
+    try:
+        import win32com.client
+        excel = win32com.client.GetObject(Class="Excel.Application")
+        if excel:
+            # A. Validate Workbook Identity
+            target_wb = None
+            wb_basename = os.path.basename(workbook_path).lower()
+            for wb in excel.Workbooks:
+                if wb.Name.lower() == wb_basename or (workbook_path and wb.FullName.lower() == workbook_path.lower()):
+                    target_wb = wb
+                    break
+
+            if not target_wb and os.path.isfile(workbook_path):
+                target_wb = excel.Workbooks.Open(workbook_path)
+
+            if not target_wb:
+                log(f"[Resume Controller] Workbook '{wb_basename}' is not open and cannot be found.")
+                return False, f"Workbook '{wb_basename}' not open", -1, -1
+
+            target_wb.Activate()
+
+            # B. Validate Worksheet Identity
+            target_ws = None
+            for ws in target_wb.Worksheets:
+                if ws.Name.lower() == worksheet_name.lower():
+                    target_ws = ws
+                    break
+
+            if not target_ws:
+                log(f"[Resume Controller] Safety Halt: Worksheet '{worksheet_name}' not found in workbook. Structure has changed.")
+                return False, f"Worksheet '{worksheet_name}' missing", -1, -1
+
+            target_ws.Activate()
+
+            # C. Validate Target Cell State and Prevent Duplicate Writes
+            if next_op:
+                next_cell_obj = target_ws.Range(f"{col_idx_to_letter(next_op['col'])}{next_op['row']}")
+                curr_val = str(next_cell_obj.Value or '').strip()
+                curr_formula = str(next_cell_obj.Formula or '').strip()
+                expected_next = str(next_op.get("value", "")).strip()
+
+                # If the target cell already contains the expected value/formula, operation was already committed!
+                if curr_val == expected_next or curr_formula == expected_next:
+                    log(f"[Resume Controller] Operation at {target_ref} already completed in workbook. Advancing to prevent duplicate write.")
+                elif curr_val != "" and curr_val != expected_next:
+                    # Cell contains unexpected conflicting data -> workbook structure was modified
+                    log(f"[Resume Controller] Safety Halt: Target cell {target_ref} contains conflicting data ('{curr_val}'). Workbook structure modified.")
+                    return False, "Target cell contains conflicting data; workbook structure changed", -1, -1
+
+            # D. Select target cell directly by application reference
+            target_ws.Range(target_ref).Select()
+            log(f"[Resume Controller] Reacquired Excel application state: Workbook '{target_wb.Name}', Sheet '{target_ws.Name}', Cell '{target_ref}'.")
+            return True, "Reacquired via Excel COM", target_row, target_col
+    except Exception as e:
+        log(f"[Resume Controller] COM application state query note ({e}); using direct reference Go To dialog.")
+
+    # 2. UI-Level Direct Reference Reacquisition (Go To dialog: 'Sheet1'!B15)
+    # Does NOT rely on Ctrl+Home followed by relative arrow navigation!
+    try:
+        # F5 opens Excel Go To dialog
+        safe_press('f5')
+        time.sleep(0.4)
+        full_ref = f"'{worksheet_name}'!{target_ref}"
+        human_typing(full_ref, wpm=140, typos=False)
+        time.sleep(0.2)
+        safe_press('enter')
+        time.sleep(0.4)
+        log(f"[Resume Controller] Directly reacquired target cell via Excel Go To: {full_ref}")
+        return True, "Reacquired via Excel Go To", target_row, target_col
+    except Exception as e:
+        log(f"[Resume Controller] Error during direct cell reacquisition: {e}")
+        return False, str(e), -1, -1
+
+def validate_excel_resume(checkpoint_payload: Dict[str, Any]) -> Tuple[bool, str, int, Tuple[int, int]]:
+    """
+    Validates Excel checkpoint structure, workbook identity, worksheet identity,
+    and ensures operations are not blindly repeated.
+    Returns (valid: bool, reason: str, next_cell_idx: int, target_coord: (row, col)).
     """
     last_idx = checkpoint_payload.get("cell_index", -1)
     cells_data = checkpoint_payload.get("cells_data", [])
     next_idx = last_idx + 1
 
+    if not checkpoint_payload.get("model_name"):
+        return False, "Checkpoint missing model_name", -1, (1, 1)
+
+    if not checkpoint_payload.get("worksheet_name"):
+        return False, "Checkpoint missing worksheet_name", -1, (1, 1)
+
     if next_idx >= len(cells_data):
         log("[Resume Controller] Checkpoint indicates model was already completed.")
-        return False, -1, (1, 1)
+        return False, "Model already completed end-to-end", -1, (1, 1)
 
     next_cell_tuple = cells_data[next_idx]
     target_coord = (next_cell_tuple[0], next_cell_tuple[1])
-    return True, next_idx, target_coord
+    return True, "Checkpoint validated", next_idx, target_coord
 
 def task_financial_modeling(duration: int) -> bool:
     r"""
     Autonomous Financial Modeling & Analysis Workload in Microsoft Excel:
-      - Validates and resumes from exact workbook, worksheet, and cell coordinate checkpoint.
-      - Never blindly repeats a completed cell write or formula.
-      - Checks installation; cleanly skips if Excel is missing.
-      - Generates 50-90 dynamic rows across financial domains.
-      - Strict foreground window focus verification (zero blind typing).
-      - Enters data and live accounting formulas (=SUM, =AVERAGE, =IF, =VLOOKUP).
+      - Restores the correct workbook and worksheet by application state.
+      - Reacquires exact target cell by application reference (does not rely on Ctrl+Home relative navigation).
+      - Validates workbook identity, worksheet identity, target cell, and operation state.
+      - Prevents duplicate writes, formula execution, or destructive operations.
+      - Stops and requests a recovery decision if workbook structure has changed.
       - Applies professional accounting borders and currency formatting.
     """
     if not is_excel_installed():
@@ -176,11 +282,15 @@ def task_financial_modeling(duration: int) -> bool:
         payload = cp.get("payload", cp)
         model_name = payload.get("model_name", "Resumed_Model")
         models_dir = payload.get("models_dir", "")
+        worksheet_name = payload.get("worksheet_name", "Sheet1")
+        workbook_path = payload.get("workbook_path", os.path.join(models_dir, f"{model_name}.xlsx"))
         cells_data = payload.get("cells_data", [])
+        last_op = payload.get("last_completed_op")
+        next_op = payload.get("next_intended_op")
 
-        valid, next_cell_idx, target_coord = validate_excel_resume(payload)
+        valid, reason, next_cell_idx, target_coord = validate_excel_resume(payload)
         if not valid:
-            log("[Financial Modeling] Invalid Excel checkpoint. Aborting task safely.")
+            log(f"[Financial Modeling] Invalid Excel checkpoint: {reason}. Aborting task safely.")
             checkpoint_mgr.clear_checkpoint()
             return False
 
@@ -190,7 +300,7 @@ def task_financial_modeling(duration: int) -> bool:
         ]
         model = FinancialModel(
             model_name=model_name,
-            sheet_title="Sheet1",
+            sheet_title=worksheet_name,
             row_count=len(reconstructed_cells),
             headers=[],
             cells=reconstructed_cells
@@ -204,6 +314,10 @@ def task_financial_modeling(duration: int) -> bool:
         start_cell_idx = 0
         current_r = 1
         current_c = 1
+        worksheet_name = "Sheet1"
+        workbook_path = ""
+        last_op = None
+        next_op = None
         log(f"[Financial Modeling] Active Model: {model.model_name} ({model.row_count} rows, {len(model.cells)} cells)")
 
         user_profile = os.environ.get("USERPROFILE", "C:\\Users\\Default")
@@ -218,7 +332,7 @@ def task_financial_modeling(duration: int) -> bool:
 
     # Step 1: Launch or Bring Forward Excel
     if not is_resuming or not focus_window_by_title(target_titles):
-        if not launch_or_focus_excel():
+        if not launch_or_focus_excel(workbook_path=workbook_path):
             log("[Financial Modeling] Verification Failed: Excel window did not appear. Aborting safely.")
             return False
         if state.is_stopped(): return False
@@ -236,15 +350,23 @@ def task_financial_modeling(duration: int) -> bool:
         # If opening a fresh Excel instance, select blank workbook
         safe_press('enter')
         time.sleep(random.uniform(0.8, 1.4))
+    else:
+        # Reacquire exact workbook, worksheet, and target cell by application state
+        reacquired, reacq_msg, current_r, current_c = reacquire_excel_application_state(
+            workbook_path=workbook_path,
+            worksheet_name=worksheet_name,
+            target_row=current_r,
+            target_col=current_c,
+            last_op=last_op,
+            next_op=next_op,
+        )
+        if not reacquired:
+            log(f"[Financial Modeling] Application state reacquisition failed: {reacq_msg}. Stopping to request recovery decision.")
+            session_mgr.mark_interrupted(f"Excel recovery required: {reacq_msg}")
+            return False
 
     # Step 3: Populate Spreadsheet Grid with Human Cadence & Fine-Grained Resumability
     current_pos = (current_r, current_c)
-
-    if is_resuming:
-        # Re-anchor Excel grid to known position A1 (1, 1) to eliminate cursor drift from human clicks
-        hotkey('ctrl', 'home')
-        time.sleep(0.4)
-        current_pos = (1, 1)
 
     for cell_idx in range(start_cell_idx, len(model.cells)):
         cell = model.cells[cell_idx]
@@ -260,9 +382,10 @@ def task_financial_modeling(duration: int) -> bool:
             log("[Financial Modeling] Excel window lost focus. Halting grid entry.")
             return False
 
-        # Move to target cell
-        _navigate_cell(current_pos, (cell.row, cell.col))
-        current_pos = (cell.row, cell.col)
+        # Move to target cell if not already on it
+        if current_pos != (cell.row, cell.col):
+            _navigate_cell(current_pos, (cell.row, cell.col))
+            current_pos = (cell.row, cell.col)
 
         # Type cell value / live formula
         human_typing(cell.value, wpm=random.randint(65, 95), typos=False)

@@ -3,7 +3,7 @@ import time
 import random
 import hashlib
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
 
 from core import state
 from core.logger import log
@@ -26,17 +26,30 @@ def compute_file_hash(content: str) -> str:
     """Computes SHA-256 hash of file content for state verification."""
     return hashlib.sha256(content.encode('utf-8', errors='ignore')).hexdigest()
 
-def launch_or_focus_vscode(workspace_dir: str, file_path: Optional[str] = None) -> bool:
+def launch_or_focus_vscode(
+    workspace_dir: str,
+    file_path: Optional[str] = None,
+    line: int = 1,
+    col: int = 1
+) -> bool:
     """
-    Directly and reliably launches Visual Studio Code or brings an existing instance forward,
-    then verifies window visibility and focus.
+    Directly and reliably launches Visual Studio Code or restores the correct workspace
+    and active file editor, positioning the cursor at the checkpointed line and column.
     """
     bind_thread_to_interactive_desktop()
     target_titles = ["Visual Studio Code", "Code"]
+    vscode_exe = get_vscode_executable()
 
-    # 1. If VS Code is already open, bring to front
+    # 1. If VS Code is running, re-anchor workspace and file via CLI reuse-window (-r -g)
     if focus_window_by_title(target_titles):
-        log("[Software Engineering] Visual Studio Code is already running; brought to front.")
+        log("[Software Engineering] Visual Studio Code is running; restoring workspace & file.")
+        if vscode_exe and file_path and os.path.isfile(file_path):
+            try:
+                import subprocess
+                subprocess.Popen([vscode_exe, "-r", "-g", f"{file_path}:{line}:{col}"])
+                time.sleep(1.0)
+            except Exception as e:
+                log(f"[Software Engineering] CLI re-anchor notice: {e}")
         return True
 
     # 2. Try launching via Start menu
@@ -44,12 +57,11 @@ def launch_or_focus_vscode(workspace_dir: str, file_path: Optional[str] = None) 
     open_app_via_run("code")
     time.sleep(2.0)
 
-    # 3. If still not appeared, try direct process spawn fallback
+    # 3. Direct process spawn fallback
     if not wait_for_window(target_titles, timeout=10.0):
-        vscode_exe = get_vscode_executable()
         args = [vscode_exe, workspace_dir] if vscode_exe else ["cmd.exe", "/c", "code", workspace_dir]
         if file_path and os.path.isfile(file_path):
-            args.append(file_path)
+            args.extend(["-g", f"{file_path}:{line}:{col}"])
         try:
             import subprocess
             subprocess.Popen(args)
@@ -65,13 +77,15 @@ def save_vscode_checkpoint(
     filename: str,
     line_idx: int,
     lines: list,
+    col_idx: int = 0,
 ) -> None:
-    """Saves granular checkpoint with last completed op, next intended op, and content hash."""
+    """Saves granular checkpoint with last completed op, next intended op, and context snapshot."""
     file_path = os.path.join(workspace_dir, filename)
     last_op = {
         "op": "WRITE_LINE",
         "file": filename,
         "line_index": line_idx,
+        "col_index": col_idx,
         "content": lines[line_idx] if 0 <= line_idx < len(lines) else "",
     }
     next_idx = line_idx + 1
@@ -79,12 +93,15 @@ def save_vscode_checkpoint(
         "op": "WRITE_LINE",
         "file": filename,
         "line_index": next_idx,
+        "col_index": 0,
         "content": lines[next_idx] if next_idx < len(lines) else None,
     }
 
-    # Snapshot written lines so far
+    # Snapshot written lines so far & surrounding context lines for validation
     written_so_far = "\n".join(lines[:line_idx + 1])
     content_hash = compute_file_hash(written_so_far)
+    start_ctx = max(0, line_idx - 2)
+    expected_context_lines = [l.strip() for l in lines[start_ctx:line_idx + 1] if l.strip()]
 
     checkpoint_payload = {
         "status": "PAUSED",
@@ -94,29 +111,33 @@ def save_vscode_checkpoint(
         "current_file": filename,
         "file_path": file_path,
         "line_index": line_idx,
+        "col_index": col_idx,
         "last_completed_op": last_op,
         "next_intended_op": next_op,
         "file_content_hash": content_hash,
+        "expected_context_lines": expected_context_lines,
         "files": task.files,
         "git_commits": task.git_commits,
         "interrupted_at": time.time(),
     }
     checkpoint_mgr.save_checkpoint("SOFTWARE_ENGINEERING", checkpoint_payload)
-    log(f"[Resume Controller] Checkpointed exact position: {filename} at line {line_idx + 1} (Next: line {next_idx + 1})")
+    log(f"[Resume Controller] Checkpointed exact position: {filename} at line {line_idx + 1}:{col_idx} (Next: line {next_idx + 1})")
 
-def validate_vscode_resume(file_path: str, checkpoint_payload: Dict[str, Any]) -> tuple[bool, int]:
+def validate_vscode_resume(file_path: str, checkpoint_payload: Dict[str, Any]) -> Tuple[bool, str, int, int]:
     """
-    Validates file state before resuming.
+    Validates file state and context against the checkpoint before resuming.
     Preserves human edits made during pause.
-    Returns (can_resume: bool, next_line_index: int).
+    Returns (can_resume: bool, reason: str, next_line_index: int, col_index: int).
     """
     resume_line_idx = checkpoint_payload.get("line_index", -1)
+    col_idx = checkpoint_payload.get("col_index", 0)
     last_op = checkpoint_payload.get("last_completed_op", {})
     expected_last_content = last_op.get("content", "").strip()
+    expected_context = checkpoint_payload.get("expected_context_lines", [])
 
-    # If the file does not exist on disk yet (e.g. was only in editor tab), resume next line
+    # If the file does not exist on disk yet (e.g. was only in editor tab before first save), safe to resume next line
     if not os.path.isfile(file_path):
-        return True, resume_line_idx + 1
+        return True, "File not yet committed to disk; proceeding from checkpoint", resume_line_idx + 1, col_idx
 
     try:
         with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
@@ -124,32 +145,43 @@ def validate_vscode_resume(file_path: str, checkpoint_payload: Dict[str, Any]) -
 
         disk_stripped = [l.strip() for l in disk_lines]
 
-        # Verify if human made modifications while automation was paused
+        # 1. Exact match for last completed operation
         if expected_last_content:
-            # Check if expected last completed line is present in file
             matching_indices = [i for i, l in enumerate(disk_stripped) if l == expected_last_content]
             if matching_indices:
-                # Find the closest matching index to our interrupted line
+                # Pick the closest matching occurrence to checkpoint line
                 best_idx = min(matching_indices, key=lambda i: abs(i - resume_line_idx))
                 log(f"[Resume Controller] Preserved human edits. Re-anchored to line {best_idx + 1} (matching last completed op).")
-                return True, best_idx + 1
-            else:
-                log(f"[Resume Controller] Note: Human modified or replaced checkpointed line. Continuing safely from next intended line {resume_line_idx + 2}.")
-                return True, resume_line_idx + 1
+                return True, "Re-anchored to matching operation", best_idx + 1, col_idx
 
-        return True, resume_line_idx + 1
+        # 2. If exact last line was edited by human, check surrounding context lines
+        if expected_context:
+            context_matches = [
+                i for i, l in enumerate(disk_stripped)
+                if any(ctx in l for ctx in expected_context)
+            ]
+            if context_matches:
+                closest_ctx = min(context_matches, key=lambda i: abs(i - resume_line_idx))
+                log(f"[Resume Controller] Preserved human edits. Re-anchored via context boundary at line {closest_ctx + 1}.")
+                return True, "Re-anchored via context match", closest_ctx + 1, col_idx
+
+        # 3. If file exists but expected context is completely unrecognizable (file wiped or replaced)
+        if len(disk_stripped) > 0 and expected_last_content:
+            log("[Resume Controller] Safety Halt: Checkpointed context cannot be located in file. Context has changed fundamentally.")
+            return False, "Target file context has changed fundamentally; safe resumption impossible", -1, -1
+
+        return True, "File verified; proceeding from next line", resume_line_idx + 1, col_idx
     except Exception as e:
         log(f"[Resume Controller] File validation error ({e}). Aborting safely.")
-        return False, -1
+        return False, str(e), -1, -1
 
 def task_software_engineering(duration: int) -> bool:
     """
     Autonomous Software Engineering Workload in Visual Studio Code:
-      - Validates and resumes from exact file, line, and operation checkpoint.
-      - Preserves human edits made during pauses.
-      - Checks installation; cleanly skips if VS Code is missing.
-      - Strict foreground window focus verification (zero blind typing).
-      - Variable typing cadence with structural boundary pauses.
+      - Restores the exact workspace and file, not merely the last active editor.
+      - Restores line and column, positioning editor cursor at next intended operation.
+      - Validates file contents against checkpoint; stops if context changed fundamentally.
+      - Preserves human edits made during pause.
       - Integrated terminal git staging workflow.
     """
     if not is_vscode_installed():
@@ -177,19 +209,21 @@ def task_software_engineering(duration: int) -> bool:
         file_path = payload.get("file_path", os.path.join(workspace_dir, resume_file) if resume_file else "")
 
         # Validate checkpoint before continuing
-        valid, next_start_line = validate_vscode_resume(file_path, payload)
-        if not valid:
-            log("[Software Engineering] Checkpoint validation failed: File state cannot be recovered safely. Aborting task rather than guessing.")
+        can_resume, reason, next_start_line, next_col = validate_vscode_resume(file_path, payload)
+        if not can_resume:
+            log(f"[Software Engineering] Checkpoint validation failed: {reason}. Aborting task rather than guessing.")
             checkpoint_mgr.clear_checkpoint()
             return False
 
         resume_line_idx = next_start_line - 1
-        log(f"[Resume Controller] Restoring interrupted VS Code task: {task.project_name} -> {resume_file} starting at line {next_start_line}")
+        log(f"[Resume Controller] Restoring interrupted VS Code task: {task.project_name} -> {resume_file} starting at line {next_start_line}:{next_col}")
     else:
         log("[Software Engineering] Generating dynamic task architecture...")
         task = coder_instance.generate_task()
         resume_file = None
         resume_line_idx = -1
+        next_col = 0
+        file_path = ""
         log(f"[Software Engineering] Task active: {task.project_name} ({task.language})")
 
         user_profile = os.environ.get("USERPROFILE", "C:\\Users\\Default")
@@ -202,9 +236,10 @@ def task_software_engineering(duration: int) -> bool:
     start_time = time.time()
     target_titles = ["Visual Studio Code", "Code"]
 
-    # Step 1: Launch or Bring Forward VS Code
+    # Step 1: Launch or Bring Forward VS Code with exact workspace and file restoration
+    target_line = resume_line_idx + 1 if is_resuming else 1
     if not is_resuming or not focus_window_by_title(target_titles):
-        if not launch_or_focus_vscode(workspace_dir):
+        if not launch_or_focus_vscode(workspace_dir, file_path=file_path, line=target_line, col=next_col):
             log("[Software Engineering] Verification Failed: VS Code window did not appear. Aborting safely.")
             return False
         if state.is_stopped(): return False
@@ -241,10 +276,18 @@ def task_software_engineering(duration: int) -> bool:
         if is_resuming and filename == resume_file and resume_line_idx >= 0:
             start_line = resume_line_idx + 1
             log(f"[Resume Controller] Resuming active file: {filename} from line {start_line + 1} of {len(lines)}")
-            # Re-anchor editor cursor to exact line position via Go to Line
+            # Switch to target file via Quick Open (Ctrl+P) to ensure correct editor tab
+            hotkey('ctrl', 'p')
+            time.sleep(0.4)
+            human_typing(filename, wpm=140, typos=False)
+            time.sleep(0.3)
+            safe_press('enter')
+            time.sleep(0.6)
+
+            # Re-anchor editor cursor to exact line & column position via Go to Line
             hotkey('ctrl', 'g')
             time.sleep(0.3)
-            human_typing(str(start_line + 1), wpm=120, typos=False)
+            human_typing(f"{start_line + 1}:{next_col + 1}", wpm=140, typos=False)
             safe_press('enter')
             time.sleep(0.2)
             safe_press('end')
@@ -260,7 +303,7 @@ def task_software_engineering(duration: int) -> bool:
             if state.is_stopped() or time.time() - start_time >= duration:
                 # Interrupted: Checkpoint exact file & line index without repeating!
                 prev_completed = idx - 1 if idx > 0 else 0
-                save_vscode_checkpoint(task, workspace_dir, filename, prev_completed, lines)
+                save_vscode_checkpoint(task, workspace_dir, filename, prev_completed, lines, col_idx=len(line))
                 return False
 
             stripped = line.strip()
@@ -268,12 +311,12 @@ def task_software_engineering(duration: int) -> bool:
             if stripped.startswith(('def ', 'class ', 'export ', 'interface ', 'func ')):
                 if state.stop_automation_event.wait(random.uniform(1.0, 2.5)):
                     prev_completed = idx - 1 if idx > 0 else 0
-                    save_vscode_checkpoint(task, workspace_dir, filename, prev_completed, lines)
+                    save_vscode_checkpoint(task, workspace_dir, filename, prev_completed, lines, col_idx=len(line))
                     return False
             elif stripped == '' and random.random() < 0.35:
                 if state.stop_automation_event.wait(random.uniform(0.4, 1.2)):
                     prev_completed = idx - 1 if idx > 0 else 0
-                    save_vscode_checkpoint(task, workspace_dir, filename, prev_completed, lines)
+                    save_vscode_checkpoint(task, workspace_dir, filename, prev_completed, lines, col_idx=len(line))
                     return False
 
             # Handle indentation via tabs
@@ -290,7 +333,7 @@ def task_software_engineering(duration: int) -> bool:
 
             if state.is_stopped():
                 # Line completed just before yield: record this idx as last completed op
-                save_vscode_checkpoint(task, workspace_dir, filename, idx, lines)
+                save_vscode_checkpoint(task, workspace_dir, filename, idx, lines, col_idx=len(line))
                 return False
 
             safe_press('enter')
