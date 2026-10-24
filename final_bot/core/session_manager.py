@@ -130,7 +130,7 @@ class SessionManager:
         log(">>> HUMAN HAS CONTROL <<<")
         log(f"[SessionManager] Automation yielded completely: {reason}")
         log("[SessionManager] Input state cleaned. All controls returned to human.")
-        log("[SessionManager] Checkpoint preserved. Press [F8], [Fn+F8], [F9], or press ENTER in this terminal to resume.")
+        log("[SessionManager] Checkpoint preserved. Press ENTER in this terminal, [F8]/[F9]/[F10], or pause hands-off for 12s to auto-resume.")
         log("======================================================================")
 
     def mark_interrupted(self, reason: str):

@@ -92,11 +92,16 @@ class PriorityEngine:
         self._running = False
         self._monitor_thread: Optional[threading.Thread] = None
         self._last_bot_move_time: float = 0.0
+        self._ignore_input_until: float = 0.0
 
         # Dedicated background cleanup worker
         self._cleanup_trigger = threading.Event()
         self._cleanup_worker = threading.Thread(target=self._cleanup_loop, daemon=True)
         self._cleanup_worker.start()
+
+    def activate_grace_period(self, duration: float = 0.8):
+        """Ignores mouse clicks and displacements during the handoff period right after resume."""
+        self._ignore_input_until = time.monotonic() + duration
 
     def notify_bot_mouse_move(self, x: int, y: int):
         """Notifies the monitor that the bot moved the cursor, updating the baseline reference."""
@@ -174,6 +179,7 @@ class PriorityEngine:
         VK_ESCAPE  = 0x1B
         VK_F8      = 0x77
         VK_F9      = 0x78
+        VK_F10     = 0x79
         VK_CONTROL = 0x11
         VK_SHIFT   = 0x10
 
@@ -181,6 +187,7 @@ class PriorityEngine:
             VK_PAUSE: False,
             VK_F8: False,
             VK_F9: False,
+            VK_F10: False,
             VK_ESCAPE: False,
         }
 
@@ -189,6 +196,12 @@ class PriorityEngine:
         while self._running:
             time.sleep(0.01) # 10ms polling interval
 
+            # Check grace period right after starting or resuming (ignores residual clicks/movements)
+            if time.monotonic() < self._ignore_input_until:
+                if user32.GetCursorPos(ctypes.byref(pt)):
+                    self.last_mouse_pos = (pt.x, pt.y)
+                continue
+
             # Hardware edge-detection for hotkeys (MSB 0x8000 = physically pressed down)
             ctrl_down = (user32.GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0
             shift_down = (user32.GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0
@@ -196,20 +209,23 @@ class PriorityEngine:
             pause_down = (user32.GetAsyncKeyState(VK_PAUSE) & 0x8000) != 0
             f8_down = (user32.GetAsyncKeyState(VK_F8) & 0x8000) != 0
             f9_down = (user32.GetAsyncKeyState(VK_F9) & 0x8000) != 0
+            f10_down = (user32.GetAsyncKeyState(VK_F10) & 0x8000) != 0
             esc_down = (user32.GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0
 
             pause_just_pressed = pause_down and not prev_keys[VK_PAUSE]
             f8_just_pressed = f8_down and not prev_keys[VK_F8]
             f9_just_pressed = f9_down and not prev_keys[VK_F9]
+            f10_just_pressed = f10_down and not prev_keys[VK_F10]
             esc_just_pressed = esc_down and not prev_keys[VK_ESCAPE]
 
             prev_keys[VK_PAUSE] = pause_down
             prev_keys[VK_F8] = f8_down
             prev_keys[VK_F9] = f9_down
+            prev_keys[VK_F10] = f10_down
             prev_keys[VK_ESCAPE] = esc_down
 
-            # 1. Emergency Stop: Ctrl+PAUSE, Shift+PAUSE, Ctrl+F8, or Ctrl+F9
-            if (pause_just_pressed and (ctrl_down or shift_down)) or ((f8_just_pressed or f9_just_pressed) and ctrl_down):
+            # 1. Emergency Stop: Ctrl+PAUSE, Shift+PAUSE, Ctrl+F8, Ctrl+F9, or Ctrl+F10
+            if (pause_just_pressed and (ctrl_down or shift_down)) or ((f8_just_pressed or f9_just_pressed or f10_just_pressed) and ctrl_down):
                 log("[PriorityEngine] EMERGENCY STOP triggered via hotkey.")
                 try:
                     from core.session_manager import session_mgr
@@ -218,12 +234,14 @@ class PriorityEngine:
                     pass
                 continue
 
-            # 2. Dedicated Toggle Keys: [F8], [Fn+F8], [F9], or [PAUSE]
-            if f8_just_pressed or f9_just_pressed or pause_just_pressed:
+            # 2. Dedicated Toggle Keys: [F8], [Fn+F8], [F9], [F10], or [PAUSE]
+            if f8_just_pressed or f9_just_pressed or f10_just_pressed or pause_just_pressed:
                 if f8_just_pressed:
                     key_label = "[F8]"
                 elif f9_just_pressed:
                     key_label = "[F9]"
+                elif f10_just_pressed:
+                    key_label = "[F10]"
                 else:
                     key_label = "[PAUSE]"
 

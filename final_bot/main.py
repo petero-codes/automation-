@@ -71,6 +71,22 @@ def run_environment_discovery(mode: str = "both"):
     log("[Discovery] Network Mode       : 100% Offline (Zero external network calls)")
     log("======================================================================")
 
+def disable_quickedit():
+    """Disables QuickEdit mode in Windows Console so clicking terminal never halts the process."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+        kernel32 = ctypes.windll.kernel32
+        hStdin = kernel32.GetStdHandle(-10) # STD_INPUT_HANDLE
+        mode = wintypes.DWORD()
+        if kernel32.GetConsoleMode(hStdin, ctypes.byref(mode)):
+            ENABLE_QUICK_EDIT_MODE = 0x0040
+            ENABLE_EXTENDED_FLAGS = 0x0080
+            new_mode = (mode.value & ~ENABLE_QUICK_EDIT_MODE) | ENABLE_EXTENDED_FLAGS
+            kernel32.SetConsoleMode(hStdin, new_mode)
+    except Exception:
+        pass
+
 def run_countdown(seconds: int, label: str = "Automation starting in", cancellable: bool = True) -> bool:
     """
     Executes a visible second-by-second countdown on the terminal.
@@ -79,6 +95,14 @@ def run_countdown(seconds: int, label: str = "Automation starting in", cancellab
     """
     if os.environ.get("SKIP_COUNTDOWN") == "1":
         return True
+
+    # Ensure stop flag is clear so countdown does not self-abort
+    state.clear_stop()
+    try:
+        from core.priority_engine import priority_engine
+        priority_engine.activate_grace_period(1.0)
+    except Exception:
+        pass
 
     log("======================================================================")
     log(f"[Countdown] {label} {seconds} seconds... (Release mouse and keyboard)")
@@ -100,11 +124,11 @@ def run_countdown(seconds: int, label: str = "Automation starting in", cancellab
             if cancellable and start_pos is not None:
                 try:
                     cur_pos = get_mouse_pos()
-                    if math.hypot(cur_pos[0] - start_pos[0], cur_pos[1] - start_pos[1]) > 35.0:
+                    if math.hypot(cur_pos[0] - start_pos[0], cur_pos[1] - start_pos[1]) > 50.0:
                         log("======================================================================")
                         log(">>> HUMAN HAS CONTROL <<<")
                         log("[Countdown] Human movement detected. Automation cancelled.")
-                        log("[SessionManager] Press ENTER in this terminal or [F8]/[F9] to resume.")
+                        log("[SessionManager] Press ENTER in this terminal, [F8]/[F9]/[F10], or pause hands-off to resume.")
                         log("======================================================================")
                         try:
                             session_mgr.mark_paused("Human Movement during Countdown")
@@ -126,10 +150,12 @@ def monitor_idle(mode: str = "both", start_now: bool = False):
         It NEVER auto-resumes after an idle timeout once paused.
       - When TERMINATED: exits supervisor loop cleanly.
     """
-    log(f"[Nextgen Engine] Armed & Ready. Initial launch triggers after {IDLE_TIMEOUT}s idle or [F8]/[Fn+F8]/[F9]/[PAUSE].")
-    log("[Nextgen Engine] Instant Yield Active: Move mouse (>60px), Click (L/R/M), [PAUSE], [F8], [F9], or Double-ESC.")
-    log("[Nextgen Engine] Emergency Stop: [Ctrl+Pause], [Shift+Pause], [Ctrl+F8], [Ctrl+F9], or [Ctrl+C] in console.")
-    log("[Nextgen Engine] Quick Resume: Press [F8], [Fn+F8], [F9], [PAUSE], or press ENTER in this terminal.")
+    log(f"[Nextgen Engine] Armed & Ready. Initial launch triggers after {IDLE_TIMEOUT}s idle or [F8]/[Fn+F8]/[F9]/[F10]/[PAUSE].")
+    log("[Nextgen Engine] Instant Yield Active: Move mouse (>60px), Click (L/R/M), [PAUSE], [F8], [F9], [F10], or Double-ESC.")
+    log("[Nextgen Engine] Emergency Stop: [Ctrl+Pause], [Shift+Pause], [Ctrl+F8], [Ctrl+F9], [Ctrl+F10], or [Ctrl+C] in console.")
+    log("[Nextgen Engine] Quick Resume: Press ENTER in this terminal, [F8]/[Fn+F8]/[F9]/[F10], or pause hands-off for 12s to auto-resume.")
+
+    disable_quickedit()
 
     # Filter task weights based on selected mode
     filtered_weights = {}
@@ -200,11 +226,22 @@ def monitor_idle(mode: str = "both", start_now: bool = False):
 
             user_resume = state.is_resume_requested()
 
-            # Rule: If paused, automation does NOT resume until explicitly requested
+            # Rule: If paused, can resume via explicit hotkey / console Enter, OR after 12s hands-off inactivity!
             if session_mgr.is_paused() or user_resume:
-                if user_resume:
+                idle_sec = get_idle_time_ms() // 1000
+                inactivity_auto_resume = session_mgr.is_paused() and (idle_sec >= 12)
+
+                if user_resume or inactivity_auto_resume:
+                    trigger_label = "User explicit resume" if user_resume else "12s human inactivity timeout (auto-resume)"
+                    log(f"[Resume Controller] {trigger_label} detected.")
                     state.clear_resume()
-                    log("[Nextgen Engine] User triggered explicit resume.")
+                    state.clear_stop()
+                    try:
+                        from core.priority_engine import priority_engine
+                        priority_engine.activate_grace_period(1.0)
+                    except Exception:
+                        pass
+
                     if run_countdown(3, label="Resuming workload from checkpoint in", cancellable=True):
                         log("======================================================================")
                         log(">>> BOT RESUMING AUTOMATION (Hands off mouse & keyboard) <<<")
@@ -213,7 +250,7 @@ def monitor_idle(mode: str = "both", start_now: bool = False):
                         worker_thread = threading.Thread(target=sched.run, daemon=True)
                         worker_thread.start()
                     else:
-                        log(">>> Resume cancelled. HUMAN HAS CONTROL. Press ENTER to try again. <<<")
+                        log(">>> Resume cancelled. HUMAN HAS CONTROL. Press ENTER or pause hands-off to resume. <<<")
                 continue
 
             # Fresh session before first start: can start on idle timeout or explicit toggle
