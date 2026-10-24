@@ -200,8 +200,9 @@ def content_scroll_session(content_type, duration):
     if state.is_stopped(): return
     sw, sh = _screen_size()
     human_mouse_move(sw // 2, sh // 2)
+    default_profile = ((1, 2), (2.0, 5.0), 0.10, 0.02, (5.0, 10.0))
     notch_range, pause_range, back_prob, distract_prob, distract_range = \
-        SCROLL_PROFILES.get(content_type, SCROLL_PROFILES['reading'])
+        SCROLL_PROFILES.get(content_type, default_profile)
     start = time.time()
     while time.time() - start < duration and not state.is_stopped():
         n = random.randint(*notch_range)

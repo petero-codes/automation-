@@ -3,13 +3,6 @@ import random
 from core import state
 from core.logger import log
 
-def _bump_grace():
-    try:
-        import core.killswitch
-        core.killswitch.set_ignore_until(time.time() + 0.15)
-    except Exception:
-        pass
-
 def init_driver():
     try:
         import interception
@@ -25,7 +18,6 @@ def safe_key_down(k):
         try:
             import interception
             interception.key_down(k)
-            _bump_grace()
         except Exception as e:
             log(f"Driver error (key_down {k}): {e}")
 
@@ -34,7 +26,6 @@ def safe_key_up(k):
         try:
             import interception
             interception.key_up(k)
-            _bump_grace()
         except Exception as e:
             log(f"Driver error (key_up {k}): {e}")
 
@@ -44,7 +35,6 @@ def safe_press(k):
         try:
             import interception
             interception.press(k)
-            _bump_grace()
         except Exception as e:
             log(f"Driver error (press {k}): {e}")
 
@@ -65,7 +55,6 @@ def safe_move_to(x, y):
         try:
             import interception
             interception.move_to(int(x), int(y))
-            _bump_grace()
         except Exception as e:
             log(f"Driver error (move_to {x},{y}): {e}")
 
@@ -75,7 +64,6 @@ def safe_mouse_down(btn='left'):
         try:
             import interception
             interception.mouse_down(btn)
-            _bump_grace()
         except Exception as e:
             log(f"Driver error (mouse_down {btn}): {e}")
 
@@ -84,7 +72,6 @@ def safe_mouse_up(btn='left'):
         try:
             import interception
             interception.mouse_up(btn)
-            _bump_grace()
         except Exception as e:
             log(f"Driver error (mouse_up {btn}): {e}")
 
@@ -94,22 +81,16 @@ def safe_write(char):
         try:
             import interception
             interception.write(char)
-            _bump_grace()
         except Exception as e:
             log(f"Driver error (write): {e}")
 
 def safe_scroll(direction):
-    """
-    Executes a single scroll wheel tick. Wraps with extreme safety.
-    """
     if state.is_stopped(): return
     with state.injecting_key:
         try:
             import interception
-            # Validate direction string as expected by interception-python
             valid_dir = 'down' if direction.lower() == 'down' else 'up'
             interception.scroll(valid_dir)
-            _bump_grace()
         except Exception as e:
             log(f"Driver error (scroll {direction}): {e}")
 

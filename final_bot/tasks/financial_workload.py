@@ -1,7 +1,7 @@
 import os
 import time
 import random
-from typing import Tuple
+from typing import Tuple, Dict, Any, Optional
 
 from core import state
 from core.logger import log
@@ -84,13 +84,78 @@ def _navigate_cell(curr: Tuple[int, int], target: Tuple[int, int]):
             safe_press('left')
             time.sleep(0.04)
 
+def save_excel_checkpoint(
+    model: FinancialModel,
+    models_dir: str,
+    cell_idx: int,
+    cell: FinancialCell,
+    all_cells: list,
+) -> None:
+    """Persists granular Excel checkpoint with last completed and next intended cell operations."""
+    workbook_path = os.path.join(models_dir, f"{model.model_name}.xlsx")
+    next_idx = cell_idx + 1
+    next_cell = all_cells[next_idx] if next_idx < len(all_cells) else None
+
+    last_op = {
+        "op": "WRITE_CELL",
+        "cell_index": cell_idx,
+        "row": cell.row,
+        "col": cell.col,
+        "value": cell.value,
+        "is_formula": cell.is_formula,
+    }
+    next_op = {
+        "op": "WRITE_CELL",
+        "cell_index": next_idx,
+        "row": next_cell.row if next_cell else None,
+        "col": next_cell.col if next_cell else None,
+        "value": next_cell.value if next_cell else None,
+        "is_formula": next_cell.is_formula if next_cell else None,
+    } if next_cell else None
+
+    checkpoint_payload = {
+        "status": "PAUSED",
+        "model_name": model.model_name,
+        "models_dir": models_dir,
+        "workbook_path": workbook_path,
+        "worksheet_name": "Sheet1",
+        "cell_index": cell_idx,
+        "current_row": cell.row,
+        "current_col": cell.col,
+        "target_cell": f"R{cell.row}C{cell.col}",
+        "last_completed_op": last_op,
+        "next_intended_op": next_op,
+        "cells_data": [(c.row, c.col, c.value, c.is_formula, c.format_currency) for c in model.cells],
+        "interrupted_at": time.time(),
+    }
+    checkpoint_mgr.save_checkpoint("FINANCIAL_MODELING", checkpoint_payload)
+    target_str = f"R{next_cell.row}C{next_cell.col}" if next_cell else "Complete"
+    log(f"[Resume Controller] Checkpointed exact Excel position: {model.model_name} at cell ({cell.row}, {cell.col}) [Next: {target_str}]")
+
+def validate_excel_resume(checkpoint_payload: Dict[str, Any]) -> tuple[bool, int, Tuple[int, int]]:
+    """
+    Validates Excel checkpoint and ensures next operation does NOT repeat completed cell writes.
+    Returns (valid: bool, next_cell_idx: int, target_coord: (row, col)).
+    """
+    last_idx = checkpoint_payload.get("cell_index", -1)
+    cells_data = checkpoint_payload.get("cells_data", [])
+    next_idx = last_idx + 1
+
+    if next_idx >= len(cells_data):
+        log("[Resume Controller] Checkpoint indicates model was already completed.")
+        return False, -1, (1, 1)
+
+    next_cell_tuple = cells_data[next_idx]
+    target_coord = (next_cell_tuple[0], next_cell_tuple[1])
+    return True, next_idx, target_coord
+
 def task_financial_modeling(duration: int) -> bool:
     r"""
     Autonomous Financial Modeling & Analysis Workload in Microsoft Excel:
-      - Resumes from exact workbook and cell coordinate if previously paused by human.
+      - Validates and resumes from exact workbook, worksheet, and cell coordinate checkpoint.
+      - Never blindly repeats a completed cell write or formula.
       - Checks installation; cleanly skips if Excel is missing.
       - Generates 50-90 dynamic rows across financial domains.
-      - Procedural File Explorer address-bar launch into Desktop\Financial_Models.
       - Strict foreground window focus verification (zero blind typing).
       - Enters data and live accounting formulas (=SUM, =AVERAGE, =IF, =VLOOKUP).
       - Applies professional accounting borders and currency formatting.
@@ -103,33 +168,40 @@ def task_financial_modeling(duration: int) -> bool:
     cp = checkpoint_mgr.load_checkpoint()
     is_resuming = (
         cp is not None
-        and cp.get("workload") == "FINANCIAL_MODELING"
-        and cp.get("payload", {}).get("status") == "PAUSED"
+        and cp.get("workload") in ("FINANCIAL_MODELING", "EXCEL")
+        and (cp.get("status") == "PAUSED" or cp.get("payload", {}).get("status") == "PAUSED")
     )
 
     if is_resuming:
-        payload = cp["payload"]
-        model_name = payload["model_name"]
-        models_dir = payload["models_dir"]
-        resume_cell_idx = payload.get("cell_index", -1)
-        current_r = payload.get("current_row", 1)
-        current_c = payload.get("current_col", 1)
+        payload = cp.get("payload", cp)
+        model_name = payload.get("model_name", "Resumed_Model")
+        models_dir = payload.get("models_dir", "")
         cells_data = payload.get("cells_data", [])
+
+        valid, next_cell_idx, target_coord = validate_excel_resume(payload)
+        if not valid:
+            log("[Financial Modeling] Invalid Excel checkpoint. Aborting task safely.")
+            checkpoint_mgr.clear_checkpoint()
+            return False
+
         reconstructed_cells = [
             FinancialCell(r, c, v, is_f, fmt_c)
             for (r, c, v, is_f, fmt_c) in cells_data
         ]
         model = FinancialModel(
             model_name=model_name,
-            domain="Financial Modeling",
+            sheet_title="Sheet1",
             row_count=len(reconstructed_cells),
+            headers=[],
             cells=reconstructed_cells
         )
-        log(f"[Resume Controller] Restoring interrupted Excel model: {model_name} at cell ({current_r}, {current_c}) [Index {resume_cell_idx + 1}]")
+        current_r, current_c = target_coord
+        start_cell_idx = next_cell_idx
+        log(f"[Resume Controller] Restoring interrupted Excel model: {model_name} skipping completed cells and resuming at cell ({current_r}, {current_c}) [Index {start_cell_idx + 1}]")
     else:
         log("[Financial Modeling] Generating dynamic financial model...")
         model = financial_gen.generate_model()
-        resume_cell_idx = -1
+        start_cell_idx = 0
         current_r = 1
         current_c = 1
         log(f"[Financial Modeling] Active Model: {model.model_name} ({model.row_count} rows, {len(model.cells)} cells)")
@@ -158,7 +230,7 @@ def task_financial_modeling(duration: int) -> bool:
 
     time.sleep(0.6)
     maximize_active_window()
-    time.sleep(random.uniform(1.0, 2.0))
+    time.sleep(random.uniform(0.8, 1.5))
 
     if not is_resuming:
         # If opening a fresh Excel instance, select blank workbook
@@ -167,23 +239,14 @@ def task_financial_modeling(duration: int) -> bool:
 
     # Step 3: Populate Spreadsheet Grid with Human Cadence & Fine-Grained Resumability
     current_pos = (current_r, current_c)
-    start_cell_idx = resume_cell_idx + 1 if is_resuming else 0
 
     for cell_idx in range(start_cell_idx, len(model.cells)):
         cell = model.cells[cell_idx]
         if state.is_stopped() or time.time() - start_time >= duration:
             # Interrupted: Checkpoint exact model, cell index, and (row, col) coordinate!
-            checkpoint_mgr.save_checkpoint("FINANCIAL_MODELING", {
-                "status": "PAUSED",
-                "model_name": model.model_name,
-                "models_dir": models_dir,
-                "cell_index": cell_idx,
-                "current_row": cell.row,
-                "current_col": cell.col,
-                "cells_data": [(c.row, c.col, c.value, c.is_formula, c.format_currency) for c in model.cells],
-                "interrupted_at": time.time(),
-            })
-            log(f"[Resume Controller] Checkpointed exact Excel position: {model.model_name} at cell ({cell.row}, {cell.col}) [Index {cell_idx + 1}]")
+            prev_cell_idx = cell_idx - 1 if cell_idx > 0 else 0
+            prev_cell = model.cells[prev_cell_idx]
+            save_excel_checkpoint(model, models_dir, prev_cell_idx, prev_cell, model.cells)
             return False
 
         # Verify Excel is still in foreground before injecting inputs
@@ -198,44 +261,26 @@ def task_financial_modeling(duration: int) -> bool:
         # Type cell value / live formula
         human_typing(cell.value, wpm=random.randint(65, 95), typos=False)
         if state.is_stopped():
-            checkpoint_mgr.save_checkpoint("FINANCIAL_MODELING", {
-                "status": "PAUSED",
-                "model_name": model.model_name,
-                "models_dir": models_dir,
-                "cell_index": cell_idx,
-                "current_row": cell.row,
-                "current_col": cell.col,
-                "cells_data": [(c.row, c.col, c.value, c.is_formula, c.format_currency) for c in model.cells],
-                "interrupted_at": time.time(),
-            })
+            save_excel_checkpoint(model, models_dir, cell_idx, cell, model.cells)
             return False
 
         # Submit cell entry (Enter moves down by 1 in Excel default settings)
         safe_press('enter')
         current_pos = (cell.row + 1, cell.col)
-        time.sleep(random.uniform(0.06, 0.20))
+        time.sleep(random.uniform(0.06, 0.18))
 
         # Format Currency if needed
         if cell.format_currency and random.random() < 0.25:
             safe_press('up')
-            time.sleep(0.05)
+            time.sleep(0.04)
             hotkey('ctrl', 'shift', '$')
             safe_press('down')
-            time.sleep(0.05)
+            time.sleep(0.04)
 
         # Natural cognitive review pause every 10-18 cells
         if cell.row % random.randint(10, 18) == 0 and cell.col == 1:
-            if state.stop_automation_event.wait(random.uniform(1.2, 3.0)):
-                checkpoint_mgr.save_checkpoint("FINANCIAL_MODELING", {
-                    "status": "PAUSED",
-                    "model_name": model.model_name,
-                    "models_dir": models_dir,
-                    "cell_index": cell_idx,
-                    "current_row": cell.row,
-                    "current_col": cell.col,
-                    "cells_data": [(c.row, c.col, c.value, c.is_formula, c.format_currency) for c in model.cells],
-                    "interrupted_at": time.time(),
-                })
+            if state.stop_automation_event.wait(random.uniform(1.0, 2.5)):
+                save_excel_checkpoint(model, models_dir, cell_idx, cell, model.cells)
                 return False
 
     # Step 4: Apply Professional Formatting & Accounting Borders
@@ -245,7 +290,7 @@ def task_financial_modeling(duration: int) -> bool:
             return False
 
         log("[Financial Modeling] Applying accounting borders and column formatting...")
-        
+
         # Select All
         hotkey('ctrl', 'a')
         time.sleep(0.4)
@@ -254,36 +299,36 @@ def task_financial_modeling(duration: int) -> bool:
         for key in ('alt', 'h', 'b', 'a'):
             if state.is_stopped(): break
             safe_press(key)
-            time.sleep(0.12)
-        time.sleep(0.4)
+            time.sleep(0.10)
+        time.sleep(0.3)
 
         # Auto-fit Column Widths: Alt -> H -> O -> I
         for key in ('alt', 'h', 'o', 'i'):
             if state.is_stopped(): break
             safe_press(key)
-            time.sleep(0.12)
-        time.sleep(0.5)
+            time.sleep(0.10)
+        time.sleep(0.4)
 
         # Deselect and return to top-left
         hotkey('ctrl', 'home')
-        time.sleep(0.6)
+        time.sleep(0.5)
 
         # Save Workbook: Ctrl + S
         hotkey('ctrl', 's')
-        time.sleep(0.8)
+        time.sleep(0.6)
 
     # Step 5: Natural Review Scroll Session
     remaining = duration - (time.time() - start_time)
     if remaining > 10 and not state.is_stopped():
         log("[Financial Modeling] Reviewing financial worksheet...")
-        for _ in range(random.randint(4, 10)):
+        for _ in range(random.randint(3, 7)):
             if state.is_stopped(): break
-            human_scroll('down', random.randint(2, 5))
-            time.sleep(random.uniform(1.2, 2.5))
-        for _ in range(random.randint(2, 5)):
-            if state.is_stopped(): break
-            human_scroll('up', random.randint(2, 4))
+            human_scroll('down', random.randint(2, 4))
             time.sleep(random.uniform(1.0, 2.0))
+        for _ in range(random.randint(1, 4)):
+            if state.is_stopped(): break
+            human_scroll('up', random.randint(2, 3))
+            time.sleep(random.uniform(0.8, 1.8))
 
     if not state.is_stopped():
         # Task completed end-to-end: clear checkpoint

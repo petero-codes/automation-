@@ -1,6 +1,6 @@
 @echo off
 setlocal EnableDelayedExpansion
-title Loggy Bot
+title Nextgen Autonomous Workforce Engine - VS Code & Excel
 
 cd /d "%~dp0"
 set "PROJECT_ROOT=%~dp0"
@@ -61,7 +61,7 @@ if %errorlevel% neq 0 (
 )
 
 :: ----------------------------------------------------------------------
-:: 3. LAUNCH LOGGY BOT & PURGE LEGACY ARTIFACTS
+:: 3. LAUNCH NEXTGEN AUTONOMOUS WORKFORCE ENGINE
 :: ----------------------------------------------------------------------
 :: Purge legacy shortcuts and artifacts if copied to an older machine
 del /f /q "%USERPROFILE%\Desktop\*loggy*.lnk" >nul 2>&1
@@ -72,17 +72,18 @@ del /f /q "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\*loggy*.*" >n
 del /f /q "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\*nextgen*.*" >nul 2>&1
 
 echo ======================================================================
-echo                  LOGGY AUTOMATION BOT IS RUNNING
+echo    NEXTGEN AUTONOMOUS WORKFORCE ENGINE (VS CODE & EXCEL ONLY)
 echo ======================================================================
-echo  * The bot will monitor for idle and start tasks automatically.
-echo  * Move your mouse or double-tap ESC anytime to take back control.
-echo  * Keep this window open or minimized while the bot runs.
+echo  * Dedicated Offline Productivity: Visual Studio Code & Microsoft Excel
+echo  * Instant Yield: Move mouse (>25px), Click, or press [F8]/[PAUSE]
+echo  * Resume: Press [F8] or [PAUSE] to explicitly resume from exact checkpoint
+echo  * Terminate: Close console window (X) to terminate cleanly
 echo ======================================================================
 echo.
 
 cd /d "%PROJECT_ROOT%final_bot"
 
-"%VENV_PY%" "main.py"
+"%VENV_PY%" "main.py" %*
 
 echo.
 echo Automation stopped. Press any key to exit.

@@ -1,49 +1,64 @@
 import time
 import random
-from typing import Dict, Any, Callable
+from typing import Dict, Any, Callable, Optional
 from core import state
 from core.logger import log
 from core.input_driver import emergency_cleanup
 from core.checkpoint_manager import checkpoint_mgr
-from config.settings import TOTAL_RUNTIME, AUTO_LAUNCH_LOGGY
+from config.settings import TOTAL_RUNTIME
 from tasks.shared import is_vscode_installed, is_excel_installed
 
 def is_task_runnable(task: Callable) -> bool:
     """Verifies whether the target application for a workload is installed."""
-    name = getattr(task, '__name__', str(task))
+    name = getattr(task, '__name__', str(task)).lower()
     if 'software_engineering' in name or 'vscode' in name:
         return is_vscode_installed()
     if 'financial' in name or 'excel' in name:
         return is_excel_installed()
-    return True
+    return False
 
-def filter_runnable_tasks(task_weights: Dict[Callable, int]) -> Dict[Callable, int]:
-    """Prunes workloads whose required applications are missing on the host machine."""
+def filter_runnable_tasks(task_weights: Dict[Callable, int], mode: str = "both") -> Dict[Callable, int]:
+    """
+    Prunes workloads based on execution mode and application availability.
+    Supported modes: 'vscode', 'excel', 'both'.
+    """
     runnable = {}
+    mode = mode.lower()
+
     for task, weight in task_weights.items():
+        name = getattr(task, '__name__', str(task)).lower()
+
+        # Check mode match
+        if mode == "vscode" and not ('software_engineering' in name or 'vscode' in name):
+            continue
+        if mode == "excel" and not ('financial' in name or 'excel' in name):
+            continue
+
+        # Check installation
         if is_task_runnable(task):
             runnable[task] = weight
         else:
-            name = getattr(task, '__name__', str(task))
             log(f"[Scheduler] Skipping unavailable workload: {name} (application not installed)")
 
     if not runnable:
-        log("[Scheduler] Neither VS Code nor Excel was detected. Please install Visual Studio Code or Microsoft Excel to run workloads.")
-        from tasks.reading_jiggler import task_reading_mode
-        runnable = {task_reading_mode: 1}
+        log(f"[Scheduler] No runnable workloads available for mode '{mode}'. Ensure required application is installed.")
 
     return runnable
 
 class Scheduler:
     """
-    Enterprise Task Scheduler with Non-Maskable IRQ 0 yield handling,
-    encrypted session resumability, and dynamic hardware/software workload selection.
+    Dedicated Task Scheduler for Visual Studio Code & Microsoft Excel workloads.
+    Handles user pause/yield, fine-grained checkpoint resumption, and safe task cycling.
     """
-    def __init__(self, task_weights: Dict[Callable, int]):
-        self.task_weights = filter_runnable_tasks(task_weights)
+    def __init__(self, task_weights: Dict[Callable, int], mode: str = "both"):
+        self.mode = mode
+        self.raw_weights = task_weights
+        self.task_weights = filter_runnable_tasks(task_weights, mode=mode)
         self._last_task = None
 
-    def pick_next_task(self):
+    def pick_next_task(self) -> Optional[Callable]:
+        if not self.task_weights:
+            return None
         pool = [t for t in self.task_weights if t is not self._last_task]
         if not pool:
             pool = list(self.task_weights.keys())
@@ -56,21 +71,14 @@ class Scheduler:
         from core.window_manager import bind_thread_to_interactive_desktop
         bind_thread_to_interactive_desktop()
         state.clear_stop()
-        log("[Scheduler] Inactivity threshold reached. Resuming Nextgen Autonomous Workforce Engine.")
+        log("[Scheduler] Autonomous Workforce cycle active.")
         start_time = time.time()
         consecutive_errors = 0
 
-        # Check for encrypted checkpoint resumability
+        # Check for existing valid checkpoint
         active_checkpoint = checkpoint_mgr.load_checkpoint()
-        if active_checkpoint:
-            log(f"[Scheduler] Resuming session from encrypted checkpoint: {active_checkpoint.get('workload')}")
-
-        if AUTO_LAUNCH_LOGGY and not state.is_stopped():
-            try:
-                from core.loggy_manager import ensure_loggy_running
-                ensure_loggy_running()
-            except Exception as e:
-                log(f"[Loggy3] Note: {e}")
+        if active_checkpoint and active_checkpoint.get("status") == "PAUSED":
+            log(f"[Scheduler] Resuming session from checkpoint: {active_checkpoint.get('workload')}")
 
         while not state.is_stopped():
             if time.time() - start_time > TOTAL_RUNTIME:
@@ -78,20 +86,27 @@ class Scheduler:
                 break
 
             task = self.pick_next_task()
-            dur = random.randint(600, 900) # 10 to 15 minute task sessions
+            if task is None:
+                log("[Scheduler] No runnable tasks detected. Pausing automation.")
+                break
+
+            dur = random.randint(600, 900)  # 10 to 15 minute task sessions
             task_name = getattr(task, '__name__', str(task))
             log(f"[Scheduler] Starting {task_name} for {dur//60}m {dur%60}s.")
-
-            # Record checkpoint before task execution
-            checkpoint_mgr.save_checkpoint(task_name, {"duration": dur, "start_time": time.time()})
 
             try:
                 result = task(dur)
                 consecutive_errors = 0
-                checkpoint_mgr.clear_checkpoint()
                 if result is False:
-                    log(f"[Scheduler] Workload {task_name} skipped or yielded early. Advancing to next workload.")
-                    continue
+                    if state.is_stopped():
+                        log(f"[Scheduler] Workload {task_name} suspended due to human interaction.")
+                        break
+                    else:
+                        log(f"[Scheduler] Workload {task_name} skipped or completed early.")
+                        continue
+                else:
+                    # Task completed successfully end-to-end
+                    checkpoint_mgr.clear_checkpoint()
             except Exception as e:
                 log(f"[Scheduler] Exception in {task_name}: {e}")
                 consecutive_errors += 1
@@ -119,4 +134,4 @@ class Scheduler:
                 elapsed += chunk
 
         state.automation_active.clear()
-        log("[Scheduler] Workforce engine yielded. Awaiting unbroken human inactivity (120s)...")
+        log("[Scheduler] Workforce engine suspended. Awaiting explicit user resume...")

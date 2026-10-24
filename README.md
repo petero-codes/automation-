@@ -1,40 +1,64 @@
 # Nextgen Autonomous Workforce Engine
 
-> **Enterprise-Grade, Undetectable Autonomous Workforce Platform for Windows 10/11**
+> **Dedicated Desktop Automation Engine: Visual Studio Code & Microsoft Excel Only**
 
-Nextgen is a high-performance autonomous workforce platform engineered with kernel-level hardware simulation (via the Windows **Interception** filter driver) and natural cognitive pacing. Driven by genuine Ring-0 hardware RawInput packets, Nextgen produces realistic, human-indistinguishable computer activity across two dedicated offline enterprise workloads.
+Nextgen is a high-performance desktop automation platform engineered with hardware-level input emulation (via the Windows **Interception** filter driver), sub-30ms human priority yielding, and fine-grained session resumability. Nextgen produces realistic, human-indistinguishable computer activity across two dedicated offline productivity workloads: **Visual Studio Code** and **Microsoft Excel**.
 
 ---
 
-## 🏛️ Mission-Critical Workloads (100% Offline)
+## 🏛️ Supported Productivity Workloads (100% Offline)
 
 ### 💻 1. Software Engineering (Visual Studio Code & Git)
-* **Dynamic Task Pooling**: Autonomous full-stack software development across dynamic system architectures powered by high-entropy procedural generation (and optional Gemini AI synthesis).
-* **Procedural File Explorer Navigation**: `Win+E` -> focus address bar (`Alt+D`) -> navigate to project folder -> launch via address bar `code .`.
-* **Authentic Human Flow**: Variable typing cadence (65–95 WPM) with burst pacing, bigram acceleration, cognitive code review dwell pauses, tab navigation, and integrated terminal Git staging (`git status`, `git add .`, `git commit`).
+* **Procedural Code Synthesis**: Dynamic multi-architecture software generation (Python, TypeScript, Go).
+* **Multi-Tier App Focus**: Checks running processes, Start Menu, and direct executable paths with strict foreground focus verification (zero blind typing).
+* **Authentic Human Flow**: Variable typing cadence (65–95 WPM) with natural bursts, structural boundary pauses (functions, classes), tab indentation, and periodic file saves (`Ctrl+S`).
+* **Integrated Git Staging**: Automated terminal staging (`git status`, `git add .`, `git commit`).
+* **Edit-Preserving Resumption**: When interrupted, records exact file path, completed line index, `last_completed_op`, `next_intended_op`, and content hash. On resume, verifies file content, preserves human edits, and continues safely without repeating completed lines.
 
 ### 📊 2. Financial Modeling & Analysis (Microsoft Excel)
 * **50–90 Row Dynamic Models**: Real-time generation of SaaS Unit Economics, DCF Valuations, and Departmental OPEX models.
-* **Procedural File Explorer Launch**: `Win+E` -> address bar `Desktop\Financial_Models` -> launch `excel "<model>.xlsx"`.
+* **Strict Focus Verification**: Brings forward and verifies foreground focus before any cell navigation or typing.
 * **Live Accounting Formulas**: Enters real formulas cell-by-cell (`=SUM`, `=AVERAGE`, `=IF`, `=VLOOKUP`).
 * **Professional Accounting Formatting**: Currency formatting (`Ctrl+Shift+$`), accounting borders (`Alt+H+B+A`), and column auto-fitting (`Alt+H+O+I`).
-
-### 📖 3. Reading Mode (Subtle Scroll Jiggler Engine)
-* **Zero-Drift Simulation**: Designed for reading documents, PDFs, code files, and specifications.
-* **Symmetrical Micro-Scroll**: After 120 seconds of unbroken human inactivity, executes a subtle downward micro-scroll (1–3 notches), dwells naturally for 1.5s–3.0s, and scrolls back UP by the exact same amount.
-* **Zero Cursor Movement (0px)**: Preserves exact reading viewport position while generating genuine Ring-0 hardware RawInput packets that reset OS sleep, screensavers, and Teams/Slack away timers.
+* **Non-Repeating Cell Resumption**: When interrupted, records workbook path, worksheet name, target cell coordinate `(row, col)`, `last_completed_op`, and `next_intended_op`. On resume, re-anchors to the target cell and advances strictly to `next_intended_op`, preventing blind re-execution.
 
 ---
 
-## 🛡️ Non-Maskable Human Priority (IRQ 0)
+## 🛡️ Human Interruption, Priority & Exact Resumption
 
 * **Instant Yield (<30ms)**:
   * Mouse movement displacement (`>25px`)
   * Mouse clicks (Left, Right, or Middle click)
   * Dedicated toggle keys (`[PAUSE]` or `[F8]`)
   * Double-tap `[ESC]`
-* **Inactivity Auto-Resume**: Automatically resumes work after 2 minutes (120s) of unbroken human inactivity.
-* **Fine-Grained Resumability**: Encrypted session state persisted via Windows DPAPI (`CryptProtectData`), checkpointing the exact code line, spreadsheet cell, or URL.
+* **Explicit User Resumption**:
+  * When automation is paused by human intervention, the engine **never** auto-resumes on an idle timer.
+  * Automation waits strictly for an explicit user signal (`[F8]`, `[PAUSE]`, or CLI command) before resuming.
+* **Granular Checkpointing**:
+  * Checkpoints are securely stored using Windows DPAPI (`CryptProtectData`).
+  * Checkpoints explicitly distinguish between completed operations and next intended operations.
+  * Completed operations are never blindly repeated.
+* **Predictable Session Lifecycle**:
+  * **Pause**: Preserves the checkpoint for the current session.
+  * **Resume**: Validates the application state and continues from the checkpoint.
+  * **Crash / Unexpected Shutdown**: Marks session state as `INTERRUPTED`. A subsequent launch detects the interrupted state and requires an explicit recovery decision (`--recover` to resume, or `--fresh` to discard).
+  * **Permanent Termination**: Closing the console window (`X`), pressing `Ctrl+C`, or system shutdown invalidates and purges the checkpoint. Terminated sessions can never be resumed.
+
+---
+
+## ⚙️ Execution Modes
+
+The engine strictly exposes only two execution modes (plus a combined mode):
+
+| Mode | Command | Description |
+| :--- | :--- | :--- |
+| **Both** (Default) | `RUN.bat` or `python main.py --mode both` | Alternates between VS Code and Excel workloads |
+| **VS Code Only** | `RUN.bat --mode vscode` or `python main.py --mode vscode` | Dedicated Software Engineering workload only |
+| **Excel Only** | `RUN.bat --mode excel` or `python main.py --mode excel` | Dedicated Financial Modeling workload only |
+
+Additional CLI flags:
+* `--recover`: Recovers an interrupted session left by a crash or unexpected shutdown.
+* `--fresh`: Discards any interrupted session and starts clean.
 
 ---
 
@@ -44,17 +68,16 @@ Nextgen is a high-performance autonomous workforce platform engineered with kern
 Double-click **`INSTALL.bat`** (or right-click -> *Run as administrator*).
 * Automatically detects or installs Python 3.10+.
 * Builds isolated `.venv` with machine-portability safeguards.
-* Registers the **Interception Kernel Driver** with Windows.
+* Registers the **Interception Filter Driver** with Windows.
 
 ### Step 2: Restart Your Computer (Required)
-Windows requires a one-time reboot for the kernel driver to bind to hardware mouse and keyboard device stacks.
+Windows requires a one-time reboot for the filter driver to bind to hardware input device stacks.
 
-### Step 3: Run the Workforce Engine
-Double-click **`RUN.bat`**.
-* Verifies kernel driver is loaded and active.
-* Automatically auto-detects installed desktop applications (VS Code, Microsoft Excel).
-* 100% Offline operation: executes dedicated software engineering (VS Code) and financial modeling (Excel) with zero external internet dependencies.
-* Awaits 120s of unbroken human inactivity, triggers the subtle reading jiggler, and commences autonomous workforce operations.
+### Step 3: Run the Engine
+Double-click **`RUN.bat`** (or run `RUN.bat --mode vscode` / `RUN.bat --mode excel`).
+* Verifies driver status.
+* Auto-detects installed desktop applications (VS Code, Microsoft Excel).
+* 100% Offline operation: executes dedicated software engineering and financial modeling with zero external internet dependencies.
 
 ---
 
@@ -63,61 +86,62 @@ Double-click **`RUN.bat`**.
 ```text
 python-automation/
 ├── INSTALL.bat                   # 1-Click installer (Python, .venv, driver)
-├── RUN.bat                       # 1-Click launcher (checks driver, launches Nextgen)
+├── RUN.bat                       # 1-Click launcher (checks driver, launches engine)
 ├── uninstall_driver.bat          # Clean uninstaller for Interception driver
 ├── requirements.txt              # Minimal dependency manifest
 ├── README.md                     # Technical architecture & deployment guide
 │
-├── Interception/                 # Ring-0 Kernel Filter Driver
+├── Interception/                 # Hardware Input Filter Driver
 │   ├── install-interception.exe  # Official driver installer binary
 │   └── library/                  # x64 & x86 C/C++ libraries
 │
-├── final_bot/                    # Nextgen Modular Bot Engine
-│   ├── main.py                   # Unified Nextgen Engine (Auto-discovery & dynamic workloads)
+├── final_bot/                    # Modular Bot Engine
+│   ├── main.py                   # Engine entry point & supervisor
 │   │
 │   ├── config/
-│   │   └── settings.py           # Timing, weights, and parameters
+│   │   └── settings.py           # Timing, runtime, and scroll profile settings
 │   │
 │   ├── core/
-│   │   ├── priority_engine.py    # Input Monitor & Priority Controller (<30ms IRQ 0)
-│   │   ├── session_manager.py    # Session Manager (Pause vs Console Close Termination)
-│   │   ├── checkpoint_manager.py # Checkpoint Manager (Windows DPAPI encryption)
+│   │   ├── priority_engine.py    # Win32 Low-Level Hooks & <30ms yield
+│   │   ├── session_manager.py    # Session Lifecycle (Active, Paused, Interrupted, Terminated)
+│   │   ├── checkpoint_manager.py # Checkpoint Manager (DPAPI encryption & validation)
 │   │   ├── system_cleaner.py     # Legacy System Cleaner (Auto-purges obsolete artifacts)
 │   │   ├── procedural_coder.py   # High-entropy software engineering generator
 │   │   ├── financial_generator.py# 50-90 row Excel model generator with live formulas
 │   │   ├── human_physics.py      # Cubic Bezier mouse easing, typing flow, scroll
-│   │   ├── input_driver.py       # Interception driver wrapper
-│   │   └── window_manager.py     # Window focus & maximization
+│   │   ├── input_driver.py       # Interception driver input injection wrapper
+│   │   └── window_manager.py     # Window focus & interactive desktop binding
 │   │
 │   └── tasks/
-│       ├── engineering_workload.py# VS Code Resume Controller & line-level execution
-│       ├── financial_workload.py  # Excel Resume Controller & cell-level execution
-│       ├── reading_jiggler.py     # Zero-drift subtle scroll reading jiggler
-│       ├── scheduler.py           # Weighted dynamic enterprise task scheduler
+│       ├── engineering_workload.py# VS Code Controller & line-level execution
+│       ├── financial_workload.py  # Excel Controller & cell-level execution
+│       ├── scheduler.py           # Mode-filtered task scheduler
 │       └── shared.py              # Multi-tier app detection & window focus
 │
 └── tests/
-    └── test_nextgen_suite.py     # 20 comprehensive unit & integration tests
+    └── test_nextgen_suite.py     # Comprehensive test suite covering all 12 criteria
 ```
-
----
-
-## 🏛️ Verified 5-Component Architecture
-
-| Component | Source File | Responsibilities |
-| :--- | :--- | :--- |
-| **Input Monitor** | [`core/priority_engine.py`](file:///D:/projects/loggy/python-automation/final_bot/core/priority_engine.py) | Win32 low-level hooks (`WH_MOUSE_LL` & `WH_KEYBOARD_LL`) detecting mouse movement (`>25px`), clicks, dedicated keys (`[F8]`, `[PAUSE]`), and double-tap `[ESC]`. |
-| **Priority Controller** | [`core/priority_engine.py`](file:///D:/projects/loggy/python-automation/final_bot/core/priority_engine.py)<br>[`core/state.py`](file:///D:/projects/loggy/python-automation/final_bot/core/state.py) | Suspends automated input within `<30ms`, cleans hardware input state, and yields immediate priority to the user. |
-| **Checkpoint Manager** | [`core/checkpoint_manager.py`](file:///D:/projects/loggy/python-automation/final_bot/core/checkpoint_manager.py) | Encrypts session state with Windows DPAPI (`CryptProtectData`), saving exact code file/line or workbook/cell. |
-| **Resume Controller** | [`tasks/engineering_workload.py`](file:///D:/projects/loggy/python-automation/final_bot/tasks/engineering_workload.py)<br>[`tasks/financial_workload.py`](file:///D:/projects/loggy/python-automation/final_bot/tasks/financial_workload.py) | Restores interrupted VS Code line (`idx + 1`) or Excel cell (`cell_idx + 1`) without duplicating work or restarting tasks. |
-| **Session Manager** | [`core/session_manager.py`](file:///D:/projects/loggy/python-automation/final_bot/core/session_manager.py) | Distinguishes a **paused session** (checkpoint preserved) from a **permanently terminated session** (closing console purges checkpoint so next launch starts a fresh session). Manages user-decided resume via `[F8]` / `[PAUSE]`. |
 
 ---
 
 ## 🧪 Verification & Testing
 
-To execute the unit and integration test suite:
+Run the test suite using the isolated virtual environment:
+
 ```cmd
-.venv\Scripts\python.exe -m unittest tests/test_nextgen_suite.py
+.venv\Scripts\python.exe -m unittest discover tests
 ```
-* **Test Results**: 20/20 Tests Passing (Priority Engine, Zero-Drift Jiggler, Procedural Coder, Path Sanitization, Financial Generator, DPAPI Checkpoints, App Discovery, Dynamic Workload Pruning, Workload Skipping Guards, Dedicated Offline Coding & Excel Matrix, Session Manager Lifecycle, Fine-Grained VS Code Resumption, Fine-Grained Excel Resumption, Console Control Handler, Legacy System Cleaner).
+
+All 17 tests verify:
+1. VS Code tasks execute correctly with file generation and git staging.
+2. Excel tasks execute correctly with accounting formulas, borders, and column fitting.
+3. Unrelated application modes are inaccessible and mode filters strictly isolate workloads.
+4. Human input pauses automation within sub-30ms latency.
+5. Paused automation does not resume until explicitly requested.
+6. Excel resumes from the bot's correct task cell without repetition.
+7. VS Code resumes from the bot's correct task location without repetition.
+8. Human edits made during a pause are preserved.
+9. Checkpoints cannot cause completed operations to be blindly repeated.
+10. Terminated sessions cannot be resumed.
+11. Interrupted sessions recover only through the explicit recovery flow.
+12. Errors and unavailable applications fail safely with zero keystroke injection.

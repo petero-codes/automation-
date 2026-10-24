@@ -1,6 +1,6 @@
 @echo off
 setlocal EnableDelayedExpansion
-title Loggy Bot - One-Click Installer
+title Nextgen Autonomous Workforce Engine - Installer
 
 cd /d "%~dp0"
 set "PROJECT_ROOT=%~dp0"
@@ -26,7 +26,8 @@ exit /b
 
 cls
 echo ======================================================================
-echo                    LOGGY BOT - ONE-CLICK INSTALLER
+echo    NEXTGEN AUTONOMOUS WORKFORCE ENGINE - ONE-CLICK INSTALLER
+echo                 (VS CODE & EXCEL ONLY)
 echo ======================================================================
 echo  This automated installer will:
 echo   [1] Purge obsolete files from previous or legacy systems
