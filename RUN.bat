@@ -75,7 +75,7 @@ echo ======================================================================
 echo    NEXTGEN AUTONOMOUS WORKFORCE ENGINE (VS CODE & EXCEL ONLY)
 echo ======================================================================
 echo  * Dedicated Offline Productivity: Visual Studio Code & Microsoft Excel
-echo  * Instant Yield: Move mouse (>25px), Click, or press [F8]/[PAUSE]
+echo  * Instant Yield: Move mouse (over 25px), Click, or press [F8]/[PAUSE]
 echo  * Resume: Press [F8] or [PAUSE] to explicitly resume from exact checkpoint
 echo  * Terminate: Close console window (X) to terminate cleanly
 echo ======================================================================
