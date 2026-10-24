@@ -755,6 +755,31 @@ class TestRealWindowsDesktopIntegration(unittest.TestCase):
         self.assertTrue(session_mgr.is_active())
         self.assertTrue(state.is_resume_requested())
 
+    # -------------------------------------------------------------
+    # 29. Live Countdown and Human Control Protocol
+    # -------------------------------------------------------------
+    def test_29_countdown_and_human_control_announcement(self):
+        """Verifies countdown execution, interrupt cancellation, and human control transition."""
+        from main import run_countdown
+
+        # 1. Verify fast skip when SKIP_COUNTDOWN=1
+        os.environ["SKIP_COUNTDOWN"] = "1"
+        try:
+            self.assertTrue(run_countdown(5, "Unit Test Starting"))
+        finally:
+            del os.environ["SKIP_COUNTDOWN"]
+
+        # 2. Verify countdown cancellation when stopped by human
+        state.request_stop()
+        completed = run_countdown(3, "Cancellation Test", cancellable=True)
+        self.assertFalse(completed)
+        state.clear_stop()
+
+        # 3. Verify terminal 'HUMAN HAS CONTROL' state transitions
+        session_mgr.mark_paused("Manual Touchpad Tap")
+        self.assertTrue(session_mgr.is_paused())
+        self.assertFalse(state.automation_active.is_set())
+
 
 if __name__ == "__main__":
     unittest.main()

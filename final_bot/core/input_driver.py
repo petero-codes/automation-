@@ -107,6 +107,8 @@ def emergency_cleanup():
             safe_key_up(k)
         for btn in ('left', 'right'):
             safe_mouse_up(btn)
-        log('Input state cleaned. Human has control.')
+        log("======================================================================")
+        log(">>> INPUT STATE CLEANED. HUMAN HAS CONTROL. <<<")
+        log("======================================================================")
     except Exception as e:
         log(f"Error during emergency cleanup: {e}")

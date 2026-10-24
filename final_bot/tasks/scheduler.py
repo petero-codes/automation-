@@ -113,7 +113,7 @@ class Scheduler:
                 consecutive_errors = 0
                 if result is False:
                     if state.is_stopped():
-                        log(f"[Scheduler] Workload {task_name} suspended due to human interaction.")
+                        log(f"[Scheduler] Workload {task_name} suspended due to human interaction. HUMAN HAS CONTROL.")
                         break
                     else:
                         log(f"[Scheduler] Workload {task_name} skipped or completed early.")
@@ -134,18 +134,26 @@ class Scheduler:
                 continue
 
             if state.is_stopped():
-                log("[Scheduler] Human yield signal acknowledged. Checkpointed active state.")
+                log("[Scheduler] Human yield signal acknowledged. Checkpointed active state. HUMAN HAS CONTROL.")
                 break
 
             # Natural inter-task cognitive break (3 to 5 minutes)
             break_sec = random.randint(180, 300)
+            log("======================================================================")
             log(f"[Scheduler] Natural cognitive pause: {break_sec//60}m {break_sec%60}s.")
+            log(">>> HUMAN HAS CONTROL during break. Automation is idle. <<<")
+            log("======================================================================")
             elapsed = 0.0
+            last_break_report = 0.0
             while elapsed < break_sec:
-                chunk = min(5.0, break_sec - elapsed)
+                chunk = min(1.0, break_sec - elapsed)
                 if state.stop_automation_event.wait(chunk):
                     break
                 elapsed += chunk
+                remaining_break = int(break_sec - elapsed)
+                if elapsed - last_break_report >= 30.0 and remaining_break > 0:
+                    last_break_report = elapsed
+                    log(f"[Break Countdown] {remaining_break//60}m {remaining_break%60}s remaining in break... (HUMAN HAS CONTROL)")
 
         state.automation_active.clear()
-        log("[Scheduler] Workforce engine suspended. Awaiting explicit user resume...")
+        log("[Scheduler] Workforce engine suspended. HUMAN HAS CONTROL. Awaiting explicit user resume...")

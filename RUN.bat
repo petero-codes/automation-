@@ -84,7 +84,7 @@ echo.
 cd /d "%PROJECT_ROOT%final_bot"
 
 if "%~1"=="" (
-    echo [Nextgen Engine] Starting in immediate execution mode...
+    echo [Nextgen Engine] Starting in immediate execution mode (with 5s countdown)...
     "%VENV_PY%" "main.py" --now
 ) else (
     "%VENV_PY%" "main.py" %*

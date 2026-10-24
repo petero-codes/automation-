@@ -119,7 +119,7 @@ class PriorityEngine:
             except Exception:
                 pass
             lat_str = f" in {self.last_yield_latency_ms:.2f}ms" if self.last_yield_latency_ms is not None else ""
-            log(f"[PriorityEngine] Human input detected ({reason}). Automation yielded{lat_str}.")
+            log(f"[PriorityEngine] Human input detected ({reason}). Automation yielded{lat_str}. HUMAN HAS CONTROL.")
 
     def trigger_instant_yield(self, reason: str, event_time_ms: Optional[int] = None) -> float:
         """

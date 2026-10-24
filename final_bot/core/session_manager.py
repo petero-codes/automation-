@@ -126,8 +126,12 @@ class SessionManager:
         self.state = SessionState.PAUSED
         state.request_stop()
         state.automation_active.clear()
-        log(f"[SessionManager] Session PAUSED: {reason}")
+        log("======================================================================")
+        log(">>> HUMAN HAS CONTROL <<<")
+        log(f"[SessionManager] Automation yielded completely: {reason}")
+        log("[SessionManager] Input state cleaned. All controls returned to human.")
         log("[SessionManager] Checkpoint preserved. Press [F8], [Fn+F8], [F9], or press ENTER in this terminal to resume.")
+        log("======================================================================")
 
     def mark_interrupted(self, reason: str):
         """Flags session as interrupted due to crash or unexpected exit."""
@@ -194,7 +198,11 @@ class SessionManager:
         except Exception:
             pass
         self.checkpoint_mgr.clear_checkpoint()
-        log(f"[SessionManager] Session terminated ({reason}). Checkpoint invalidated. Fresh launch will start new session.")
+        log("======================================================================")
+        log(">>> SESSION TERMINATED. HUMAN HAS CONTROL. <<<")
+        log(f"[SessionManager] Session terminated ({reason}). Checkpoint invalidated.")
+        log("[SessionManager] Fresh launch will start new session.")
+        log("======================================================================")
 
     def is_paused(self) -> bool:
         return self.state == SessionState.PAUSED

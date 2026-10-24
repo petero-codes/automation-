@@ -16,6 +16,7 @@ if str(BASE_DIR) not in sys.path:
 
 import threading
 import time
+import math
 
 from core import state
 from core.logger import log
@@ -70,6 +71,52 @@ def run_environment_discovery(mode: str = "both"):
     log("[Discovery] Network Mode       : 100% Offline (Zero external network calls)")
     log("======================================================================")
 
+def run_countdown(seconds: int, label: str = "Automation starting in", cancellable: bool = True) -> bool:
+    """
+    Executes a visible second-by-second countdown on the terminal.
+    Allows user to abort by moving mouse or pressing a key.
+    Returns True if finished, False if interrupted by human.
+    """
+    if os.environ.get("SKIP_COUNTDOWN") == "1":
+        return True
+
+    log("======================================================================")
+    log(f"[Countdown] {label} {seconds} seconds... (Release mouse and keyboard)")
+    log("======================================================================")
+
+    start_pos = None
+    try:
+        from core.human_physics import get_mouse_pos
+        start_pos = get_mouse_pos()
+    except Exception:
+        pass
+
+    for sec in range(seconds, 0, -1):
+        log(f"[Countdown] {sec}...")
+        for _ in range(10):
+            if state.is_stopped():
+                log(">>> Countdown aborted. HUMAN HAS CONTROL. <<<")
+                return False
+            if cancellable and start_pos is not None:
+                try:
+                    cur_pos = get_mouse_pos()
+                    if math.hypot(cur_pos[0] - start_pos[0], cur_pos[1] - start_pos[1]) > 35.0:
+                        log("======================================================================")
+                        log(">>> HUMAN HAS CONTROL <<<")
+                        log("[Countdown] Human movement detected. Automation cancelled.")
+                        log("[SessionManager] Press ENTER in this terminal or [F8]/[F9] to resume.")
+                        log("======================================================================")
+                        try:
+                            session_mgr.mark_paused("Human Movement during Countdown")
+                        except Exception:
+                            pass
+                        return False
+                except Exception:
+                    pass
+            time.sleep(0.1)
+
+    return True
+
 def monitor_idle(mode: str = "both", start_now: bool = False):
     """
     Main supervisory loop:
@@ -98,13 +145,20 @@ def monitor_idle(mode: str = "both", start_now: bool = False):
 
     first_start_done = False
     worker_thread: Optional[threading.Thread] = None
+    last_idle_report = 0.0
 
     if start_now:
-        log("[Nextgen Engine] Immediate execution requested (--now). Launching workload directly...")
-        first_start_done = True
-        session_mgr.mark_active()
-        worker_thread = threading.Thread(target=sched.run, daemon=True)
-        worker_thread.start()
+        log("[Nextgen Engine] Immediate execution mode requested (--now).")
+        if run_countdown(5, label="Starting workforce engine in", cancellable=True):
+            log("======================================================================")
+            log(">>> BOT TAKING CONTROL (Hands off mouse & keyboard) <<<")
+            log("======================================================================")
+            first_start_done = True
+            session_mgr.mark_active()
+            worker_thread = threading.Thread(target=sched.run, daemon=True)
+            worker_thread.start()
+        else:
+            log(">>> Launch cancelled by user. HUMAN HAS CONTROL. Press ENTER or [F8]/[F9] to start. <<<")
 
     try:
         import msvcrt
@@ -150,26 +204,46 @@ def monitor_idle(mode: str = "both", start_now: bool = False):
             if session_mgr.is_paused() or user_resume:
                 if user_resume:
                     state.clear_resume()
-                    log("[Nextgen Engine] User triggered explicit resume. Continuing workload from checkpoint...")
-                    session_mgr.mark_active()
-                    worker_thread = threading.Thread(target=sched.run, daemon=True)
-                    worker_thread.start()
+                    log("[Nextgen Engine] User triggered explicit resume.")
+                    if run_countdown(3, label="Resuming workload from checkpoint in", cancellable=True):
+                        log("======================================================================")
+                        log(">>> BOT RESUMING AUTOMATION (Hands off mouse & keyboard) <<<")
+                        log("======================================================================")
+                        session_mgr.mark_active()
+                        worker_thread = threading.Thread(target=sched.run, daemon=True)
+                        worker_thread.start()
+                    else:
+                        log(">>> Resume cancelled. HUMAN HAS CONTROL. Press ENTER to try again. <<<")
                 continue
 
             # Fresh session before first start: can start on idle timeout or explicit toggle
             if not first_start_done:
-                inactivity_reached = get_idle_time_ms() >= IDLE_TIMEOUT * 1000
+                idle_sec = get_idle_time_ms() // 1000
+                remaining = max(0, IDLE_TIMEOUT - idle_sec)
+
+                now_t = time.time()
+                if now_t - last_idle_report >= 10.0 and remaining > 0:
+                    last_idle_report = now_t
+                    log(f"[Idle Countdown] System idle: {idle_sec}s / {IDLE_TIMEOUT}s ({remaining}s remaining until automation) | Press ENTER to start immediately")
+
+                inactivity_reached = idle_sec >= IDLE_TIMEOUT
                 if user_resume or inactivity_reached:
                     state.clear_resume()
                     if user_resume:
-                        log("[Nextgen Engine] User started automation via dedicated toggle.")
+                        log("[Nextgen Engine] User started automation via dedicated toggle / console key.")
                     else:
-                        log(f"[Nextgen Engine] {IDLE_TIMEOUT}s initial inactivity reached. Starting workforce...")
+                        log(f"[Nextgen Engine] {IDLE_TIMEOUT}s initial inactivity reached. Launching automation...")
 
-                    first_start_done = True
-                    session_mgr.mark_active()
-                    worker_thread = threading.Thread(target=sched.run, daemon=True)
-                    worker_thread.start()
+                    if run_countdown(3, label="Launching workload in", cancellable=True):
+                        log("======================================================================")
+                        log(">>> BOT TAKING CONTROL (Hands off mouse & keyboard) <<<")
+                        log("======================================================================")
+                        first_start_done = True
+                        session_mgr.mark_active()
+                        worker_thread = threading.Thread(target=sched.run, daemon=True)
+                        worker_thread.start()
+                    else:
+                        log(">>> Launch cancelled by user. HUMAN HAS CONTROL. <<<")
 
 from core.window_manager import bind_thread_to_interactive_desktop
 
