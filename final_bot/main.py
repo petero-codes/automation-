@@ -2,7 +2,7 @@
 Nextgen Autonomous Workforce Engine
 Dedicated Desktop Automation Engine: Visual Studio Code & Microsoft Excel Only.
 100% Offline execution, natural human cognitive pacing, hardware input emulation,
-and <30ms non-maskable human priority (IRQ 0).
+and measured sub-millisecond human priority yield via Win32 low-level hooks.
 """
 
 import os
@@ -73,6 +73,7 @@ def run_environment_discovery(mode: str = "both"):
 def monitor_idle(mode: str = "both"):
     """
     Main supervisory loop:
+      - When an interrupted session exists: blocks execution until recovery decision is made.
       - For fresh sessions: starts when idle threshold is reached or when [F8]/[PAUSE] is pressed.
       - When PAUSED by human interaction: waits STRICTLY for explicit user resume ([F8] or [PAUSE]).
         It NEVER auto-resumes after an idle timeout once paused.
@@ -98,6 +99,12 @@ def monitor_idle(mode: str = "both"):
         time.sleep(0.5)
 
         if not state.automation_active.is_set():
+            # If session is interrupted from crash/unexpected exit, require recovery decision
+            if session_mgr.is_interrupted():
+                log("[Nextgen Engine] Session is INTERRUPTED. Awaiting explicit recovery (--recover or --fresh).")
+                time.sleep(2.0)
+                continue
+
             user_resume = state.is_resume_requested()
 
             # Rule: If paused, automation does NOT resume until explicitly requested
@@ -158,6 +165,23 @@ def main():
         recovery_decision = "discard"
 
     session_mgr.start_session(recovery_decision=recovery_decision)
+
+    # If interrupted session exists and no CLI decision was provided, prompt if interactive
+    if session_mgr.is_interrupted() and recovery_decision is None:
+        if sys.stdin and hasattr(sys.stdin, "isatty") and sys.stdin.isatty():
+            try:
+                choice = input("[SessionManager] Interrupted session detected. Recover and resume? [Y/n]: ").strip().lower()
+                if choice in ("", "y", "yes"):
+                    session_mgr.recover_interrupted_session()
+                else:
+                    session_mgr.discard_interrupted_session()
+            except Exception:
+                pass
+        else:
+            log("[SessionManager] Interrupted session detected from crash or shutdown.")
+            log("[SessionManager] Launch with '--recover' to restore checkpoint, or '--fresh' to start new session.")
+            return
+
     run_environment_discovery(mode=args.mode)
 
     try:

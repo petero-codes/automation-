@@ -156,17 +156,21 @@ class TestNextgenWorkforceEngine(unittest.TestCase):
     # 4. Human input pauses automation
     # -------------------------------------------------------------
     def test_4_human_input_pauses_automation(self):
-        """Verifies mouse or keyboard human input immediately yields control and sets session to PAUSED."""
+        """Verifies mouse or keyboard human input immediately yields control, measures latency, and sets session to PAUSED."""
         state.automation_active.set()
         session_mgr.state = SessionState.ACTIVE
         self.assertTrue(state.automation_active.is_set())
 
         # Simulate instant yield triggered by mouse displacement > 25px
-        priority_engine.trigger_instant_yield("Hardware Mouse Displacement (32.4px > 25.0px)")
+        latency = priority_engine.trigger_instant_yield("Hardware Mouse Displacement (32.4px > 25.0px)")
 
         self.assertTrue(state.is_stopped())
         self.assertFalse(state.automation_active.is_set())
         self.assertTrue(session_mgr.is_paused())
+        self.assertIsNotNone(priority_engine.last_yield_latency_ms)
+        self.assertIsInstance(priority_engine.last_yield_latency_ms, float)
+        self.assertGreater(priority_engine.last_yield_latency_ms, 0.0)
+        self.assertLess(priority_engine.last_yield_latency_ms, 50.0)
 
     # -------------------------------------------------------------
     # 5. Automation does not resume until explicitly requested
@@ -422,6 +426,54 @@ class TestNextgenWorkforceEngine(unittest.TestCase):
         purged = purge_legacy_system_artifacts()
         self.assertIn(str(dummy), purged)
         self.assertFalse(dummy.exists())
+
+    def test_os_shutdown_preserves_interrupted_checkpoint(self):
+        """Verifies OS shutdown / logoff marks session INTERRUPTED without deleting checkpoint."""
+        test_file = str(BASE_DIR / ".test_shutdown_cp.bin")
+        mgr = CheckpointManager(storage_path=test_file)
+        mgr.save_checkpoint("VS_CODE", {"project_name": "important_task", "line_index": 50})
+
+        test_sess = SessionManager(checkpoint_manager=mgr)
+        test_sess.start_session()
+
+        # Simulate CTRL_SHUTDOWN_EVENT (6)
+        ret = test_sess._console_ctrl_handler(6)
+        self.assertEqual(ret, 1)
+        self.assertTrue(test_sess.is_interrupted())
+
+        # Checkpoint file must still exist and be marked INTERRUPTED
+        loaded = mgr.load_checkpoint()
+        self.assertIsNotNone(loaded)
+        status = loaded.get("status") or loaded.get("payload", {}).get("status")
+        self.assertEqual(status, "INTERRUPTED")
+        mgr.clear_checkpoint()
+
+    def test_dpapi_encryption_failure_prevents_plaintext_leak(self):
+        """Verifies when DPAPI fails, unencrypted plaintext is NEVER written to disk."""
+        test_file = str(BASE_DIR / ".test_fail_dpapi.bin")
+        mgr = CheckpointManager(storage_path=test_file)
+        with patch.object(mgr, "_encrypt_dpapi", side_effect=RuntimeError("DPAPI Access Denied")):
+            saved = mgr.save_checkpoint("VS_CODE", {"sensitive": "secret_code", "line_index": 5})
+            self.assertFalse(saved)
+            self.assertFalse(os.path.exists(test_file))
+
+    def test_checkpoint_schema_deep_validation(self):
+        """Verifies deep schema checks reject invalid workloads, negative indices, or malformed ops."""
+        mgr = CheckpointManager()
+        # Invalid workload
+        self.assertFalse(mgr.validate_checkpoint({"workload": "BROWSER", "status": "PAUSED"}))
+        # Negative line index
+        self.assertFalse(mgr.validate_checkpoint({
+            "workload": "VS_CODE",
+            "status": "PAUSED",
+            "payload": {"project_name": "valid", "line_index": -5}
+        }))
+        # Invalid op structure
+        self.assertFalse(mgr.validate_checkpoint({
+            "workload": "VS_CODE",
+            "status": "PAUSED",
+            "payload": {"project_name": "valid", "line_index": 5, "last_completed_op": "invalid_string_not_dict"}
+        }))
 
 if __name__ == "__main__":
     unittest.main()

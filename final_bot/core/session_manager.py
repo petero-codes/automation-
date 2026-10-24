@@ -53,17 +53,22 @@ class SessionManager:
                 log(f"[SessionManager] Note: Could not register console handler: {e}")
 
     def _console_ctrl_handler(self, dwCtrlType: int) -> int:
-        event_names = {
-            CTRL_C_EVENT: "Ctrl+C",
-            CTRL_BREAK_EVENT: "Ctrl+Break",
-            CTRL_CLOSE_EVENT: "Console Window Closed (X)",
-            CTRL_LOGOFF_EVENT: "User Logoff",
-            CTRL_SHUTDOWN_EVENT: "System Shutdown",
-        }
-        event_str = event_names.get(dwCtrlType, f"Event {dwCtrlType}")
-        log(f"[SessionManager] Permanent session termination signaled: {event_str}")
-        self.terminate_session(f"Console Termination ({event_str})")
-        return 1
+        if dwCtrlType in (CTRL_LOGOFF_EVENT, CTRL_SHUTDOWN_EVENT):
+            event_name = "User Logoff" if dwCtrlType == CTRL_LOGOFF_EVENT else "System Shutdown"
+            log(f"[SessionManager] OS-level session interruption signaled: {event_name}")
+            self.mark_interrupted(f"OS Interruption ({event_name})")
+            return 1
+        elif dwCtrlType in (CTRL_CLOSE_EVENT, CTRL_C_EVENT, CTRL_BREAK_EVENT):
+            event_names = {
+                CTRL_C_EVENT: "Ctrl+C",
+                CTRL_BREAK_EVENT: "Ctrl+Break",
+                CTRL_CLOSE_EVENT: "Console Window Closed (X)",
+            }
+            event_str = event_names.get(dwCtrlType, f"Event {dwCtrlType}")
+            log(f"[SessionManager] Explicit user termination signaled: {event_str}")
+            self.terminate_session(f"Explicit Termination ({event_str})")
+            return 1
+        return 0
 
     def start_session(self, recovery_decision: Optional[str] = None):
         """

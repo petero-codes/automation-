@@ -20,7 +20,7 @@ from core.checkpoint_manager import checkpoint_mgr
 
 financial_gen = FinancialGenerator()
 
-def launch_or_focus_excel() -> bool:
+def launch_or_focus_excel(workbook_path: Optional[str] = None) -> bool:
     """
     Directly and reliably launches Microsoft Excel or brings an existing instance forward,
     then verifies window visibility and focus.
@@ -41,12 +41,12 @@ def launch_or_focus_excel() -> bool:
     # 3. If still not appeared, try direct process spawn fallback
     if not wait_for_window(target_titles, timeout=10.0):
         excel_exe = get_excel_executable()
+        args = [excel_exe] if (excel_exe and os.path.isfile(excel_exe)) else ["cmd.exe", "/c", "start", "excel"]
+        if workbook_path and os.path.isfile(workbook_path):
+            args.append(workbook_path)
         try:
             import subprocess
-            if excel_exe and os.path.isfile(excel_exe):
-                subprocess.Popen([excel_exe])
-            else:
-                subprocess.Popen(["cmd.exe", "/c", "start", "excel"])
+            subprocess.Popen(args)
         except Exception as e:
             log(f"[Financial Modeling] Launch error: {e}")
 
@@ -239,6 +239,12 @@ def task_financial_modeling(duration: int) -> bool:
 
     # Step 3: Populate Spreadsheet Grid with Human Cadence & Fine-Grained Resumability
     current_pos = (current_r, current_c)
+
+    if is_resuming:
+        # Re-anchor Excel grid to known position A1 (1, 1) to eliminate cursor drift from human clicks
+        hotkey('ctrl', 'home')
+        time.sleep(0.4)
+        current_pos = (1, 1)
 
     for cell_idx in range(start_cell_idx, len(model.cells)):
         cell = model.cells[cell_idx]

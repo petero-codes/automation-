@@ -20,7 +20,7 @@ class CheckpointManager:
     """
     Application Checkpoint Manager for VS Code & Microsoft Excel.
     Persists granular state (active file, line number, Excel cell, last/next operation).
-    Uses Windows DPAPI (CryptProtectData) with secure fallback.
+    Uses Windows DPAPI (CryptProtectData) exclusively to prevent sensitive plaintext exposure.
     """
     def __init__(self, storage_path: Optional[str] = None):
         if storage_path is None:
@@ -50,7 +50,7 @@ class CheckpointManager:
         raise RuntimeError(f"DPAPI Decryption failed with error: {kernel32.GetLastError()}")
 
     def save_checkpoint(self, workload: str, payload: Dict[str, Any], status: Optional[str] = None) -> bool:
-        """Persists an encrypted session checkpoint with operation tracking."""
+        """Persists an encrypted session checkpoint with operation tracking via DPAPI."""
         try:
             status_val = status or payload.get("status", "PAUSED")
             state_data = {
@@ -68,8 +68,9 @@ class CheckpointManager:
             try:
                 encrypted = self._encrypt_dpapi(raw_bytes)
             except Exception as e:
-                # Fallback to local byte encoding if DPAPI is restricted in sandbox
-                encrypted = b"ENC_" + raw_bytes[::-1]
+                # Do not write unencrypted plaintext to disk
+                log(f"[Checkpoint] Critical: DPAPI encryption failed ({e}). Checkpoint aborted to prevent plaintext exposure.")
+                return False
 
             with open(self.storage_path, "wb") as f:
                 f.write(encrypted)
@@ -80,7 +81,7 @@ class CheckpointManager:
             return False
 
     def load_checkpoint(self) -> Optional[Dict[str, Any]]:
-        """Loads and decrypts the latest checkpoint if present."""
+        """Loads and decrypts the latest checkpoint if present via DPAPI."""
         if not os.path.exists(self.storage_path):
             return None
 
@@ -88,18 +89,14 @@ class CheckpointManager:
             with open(self.storage_path, "rb") as f:
                 raw = f.read()
 
-            if raw.startswith(b"ENC_"):
-                decrypted = raw[4:][::-1]
-            else:
-                decrypted = self._decrypt_dpapi(raw)
-
+            decrypted = self._decrypt_dpapi(raw)
             data = json.loads(decrypted.decode("utf-8"))
             # Ensure payload sub-dict is present for backwards compatibility
             if "payload" not in data:
                 data["payload"] = dict(data)
             return data
         except Exception as e:
-            log(f"[Checkpoint] Error reading checkpoint: {e}")
+            log(f"[Checkpoint] Error reading/decrypting checkpoint: {e}")
             return None
 
     def clear_checkpoint(self) -> None:
@@ -129,8 +126,9 @@ class CheckpointManager:
 
     def validate_checkpoint(self, cp: Optional[Dict[str, Any]]) -> bool:
         """
-        Validates checkpoint integrity and application-specific parameters.
-        Prevents blind resumes or corrupted state restoration.
+        Validates checkpoint integrity, application identity, task coordinates,
+        and operation structures before allowing resumption.
+        Prevents corrupted, tampered, or mismatched checkpoint restoration.
         """
         if not cp or not isinstance(cp, dict):
             return False
@@ -139,19 +137,49 @@ class CheckpointManager:
         if workload not in ("SOFTWARE_ENGINEERING", "FINANCIAL_MODELING", "VS_CODE", "EXCEL"):
             return False
 
+        status = cp.get("status") or cp.get("payload", {}).get("status")
+        if status not in ("PAUSED", "INTERRUPTED"):
+            return False
+
         payload = cp.get("payload", cp)
+
         if workload in ("SOFTWARE_ENGINEERING", "VS_CODE"):
-            # Check VS Code required fields
-            if "project_name" not in payload and "project" not in payload:
+            project = payload.get("project_name") or payload.get("project")
+            if not project or not isinstance(project, str):
                 return False
-            if "line_index" not in payload and "line_offset" not in payload:
+
+            line_idx = payload.get("line_index")
+            if line_idx is None:
+                line_idx = payload.get("line_offset")
+            if line_idx is None or not isinstance(line_idx, int) or line_idx < 0:
                 return False
+
+            last_op = payload.get("last_completed_op")
+            if last_op is not None and not isinstance(last_op, dict):
+                return False
+
             return True
 
         if workload in ("FINANCIAL_MODELING", "EXCEL"):
-            # Check Excel required fields
-            if "model_name" not in payload and "excel_cell" not in payload:
+            model = payload.get("model_name") or payload.get("model")
+            if not model or not isinstance(model, str):
                 return False
+
+            cell_idx = payload.get("cell_index")
+            if cell_idx is not None and (not isinstance(cell_idx, int) or cell_idx < 0):
+                return False
+
+            row = payload.get("current_row")
+            col = payload.get("current_col")
+            if row is not None and (not isinstance(row, int) or row < 1):
+                return False
+            if col is not None and (not isinstance(col, int) or col < 1):
+                return False
+
+            last_op = payload.get("last_completed_op")
+            if last_op is not None and not isinstance(last_op, dict):
+                return False
+
             return True
 
         return False

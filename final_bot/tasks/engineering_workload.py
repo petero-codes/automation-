@@ -26,7 +26,7 @@ def compute_file_hash(content: str) -> str:
     """Computes SHA-256 hash of file content for state verification."""
     return hashlib.sha256(content.encode('utf-8', errors='ignore')).hexdigest()
 
-def launch_or_focus_vscode(workspace_dir: str) -> bool:
+def launch_or_focus_vscode(workspace_dir: str, file_path: Optional[str] = None) -> bool:
     """
     Directly and reliably launches Visual Studio Code or brings an existing instance forward,
     then verifies window visibility and focus.
@@ -47,12 +47,12 @@ def launch_or_focus_vscode(workspace_dir: str) -> bool:
     # 3. If still not appeared, try direct process spawn fallback
     if not wait_for_window(target_titles, timeout=10.0):
         vscode_exe = get_vscode_executable()
+        args = [vscode_exe, workspace_dir] if vscode_exe else ["cmd.exe", "/c", "code", workspace_dir]
+        if file_path and os.path.isfile(file_path):
+            args.append(file_path)
         try:
             import subprocess
-            if vscode_exe and os.path.isfile(vscode_exe):
-                subprocess.Popen([vscode_exe, workspace_dir])
-            else:
-                subprocess.Popen(["cmd.exe", "/c", "code", workspace_dir])
+            subprocess.Popen(args)
         except Exception as e:
             log(f"[Software Engineering] Launch error: {e}")
 
@@ -241,6 +241,14 @@ def task_software_engineering(duration: int) -> bool:
         if is_resuming and filename == resume_file and resume_line_idx >= 0:
             start_line = resume_line_idx + 1
             log(f"[Resume Controller] Resuming active file: {filename} from line {start_line + 1} of {len(lines)}")
+            # Re-anchor editor cursor to exact line position via Go to Line
+            hotkey('ctrl', 'g')
+            time.sleep(0.3)
+            human_typing(str(start_line + 1), wpm=120, typos=False)
+            safe_press('enter')
+            time.sleep(0.2)
+            safe_press('end')
+            time.sleep(0.2)
             is_resuming = False
         else:
             log(f"[Software Engineering] Editing file: {filename}")
