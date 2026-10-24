@@ -723,6 +723,38 @@ class TestRealWindowsDesktopIntegration(unittest.TestCase):
                 except Exception:
                     pass
 
+    # -------------------------------------------------------------
+    # 28. Bot mouse movement filtering and multi-key / console resume
+    # -------------------------------------------------------------
+    def test_28_bot_mouse_move_filtering_and_multi_key_resumption(self):
+        """Verifies bot mouse moves do not trigger self-pause, and verifies [F9] / Console resume."""
+        # 1. Verify notify_bot_mouse_move synchronizes reference position
+        priority_engine.notify_bot_mouse_move(450, 300)
+        self.assertEqual(priority_engine.last_mouse_pos, (450, 300))
+
+        # 2. Verify _is_bot_injecting recognizes bot mouse movement flag
+        state.is_bot_moving_mouse = True
+        self.assertTrue(priority_engine._is_bot_injecting())
+        state.is_bot_moving_mouse = False
+
+        # 3. Verify session pause and multi-key / console resume
+        session_mgr.mark_paused("Test Pause")
+        self.assertTrue(session_mgr.is_paused())
+
+        # Test resume via [F9]
+        res_f9 = session_mgr.request_resume("Dedicated Toggle Key [F9]")
+        self.assertTrue(res_f9)
+        self.assertTrue(session_mgr.is_active())
+        self.assertTrue(state.is_resume_requested())
+
+        # Re-pause and test resume via console key
+        session_mgr.mark_paused("Test Pause 2")
+        self.assertTrue(session_mgr.is_paused())
+        res_console = session_mgr.request_resume("Console Key (ENTER/SPACE)")
+        self.assertTrue(res_console)
+        self.assertTrue(session_mgr.is_active())
+        self.assertTrue(state.is_resume_requested())
+
 
 if __name__ == "__main__":
     unittest.main()

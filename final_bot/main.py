@@ -79,9 +79,10 @@ def monitor_idle(mode: str = "both", start_now: bool = False):
         It NEVER auto-resumes after an idle timeout once paused.
       - When TERMINATED: exits supervisor loop cleanly.
     """
-    log(f"[Nextgen Engine] Armed & Ready. Initial launch triggers after {IDLE_TIMEOUT}s idle or [F8]/[PAUSE].")
-    log("[Nextgen Engine] Instant Yield Active: Move mouse (>25px), Click (L/R/M), [PAUSE], [F8], or Double-ESC.")
-    log("[Nextgen Engine] Emergency Stop: [Ctrl+Pause], [Shift+Pause], [Ctrl+F8], or [Ctrl+C] in console.")
+    log(f"[Nextgen Engine] Armed & Ready. Initial launch triggers after {IDLE_TIMEOUT}s idle or [F8]/[Fn+F8]/[F9]/[PAUSE].")
+    log("[Nextgen Engine] Instant Yield Active: Move mouse (>60px), Click (L/R/M), [PAUSE], [F8], [F9], or Double-ESC.")
+    log("[Nextgen Engine] Emergency Stop: [Ctrl+Pause], [Shift+Pause], [Ctrl+F8], [Ctrl+F9], or [Ctrl+C] in console.")
+    log("[Nextgen Engine] Quick Resume: Press [F8], [Fn+F8], [F9], [PAUSE], or press ENTER in this terminal.")
 
     # Filter task weights based on selected mode
     filtered_weights = {}
@@ -96,22 +97,47 @@ def monitor_idle(mode: str = "both", start_now: bool = False):
         return
 
     first_start_done = False
+    worker_thread: Optional[threading.Thread] = None
 
     if start_now:
         log("[Nextgen Engine] Immediate execution requested (--now). Launching workload directly...")
         first_start_done = True
         session_mgr.mark_active()
-        threading.Thread(target=sched.run, daemon=True).start()
+        worker_thread = threading.Thread(target=sched.run, daemon=True)
+        worker_thread.start()
+
+    try:
+        import msvcrt
+        has_msvcrt = True
+    except ImportError:
+        has_msvcrt = False
 
     while True:
-        time.sleep(0.5)
+        time.sleep(0.2)
 
         # Clean exit when session is terminated
         if session_mgr.is_terminated():
             log("[Nextgen Engine] Session terminated. Exiting supervisor loop.")
             break
 
-        if not state.automation_active.is_set():
+        # Check console keyboard input (non-blocking)
+        if has_msvcrt and msvcrt.kbhit():
+            try:
+                ch = msvcrt.getch()
+                if ch in (b'\r', b'\n', b' ', b'r', b'R'):
+                    if session_mgr.is_paused() or (not first_start_done and not state.automation_active.is_set()):
+                        log("[Nextgen Engine] Console input detected (ENTER/SPACE). Triggering explicit resume...")
+                        session_mgr.request_resume("Console Key (ENTER/SPACE)")
+                elif ch in (b'q', b'Q', b'\x03'):
+                    log("[Nextgen Engine] Console exit key pressed. Terminating session.")
+                    session_mgr.terminate_session("Console Exit Key")
+                    break
+            except Exception:
+                pass
+
+        worker_alive = worker_thread is not None and worker_thread.is_alive()
+
+        if not worker_alive:
             # If session is interrupted from crash/unexpected exit, require recovery decision
             if session_mgr.is_interrupted():
                 log("[Nextgen Engine] Session is INTERRUPTED. Awaiting explicit recovery (--recover or --fresh).")
@@ -121,12 +147,13 @@ def monitor_idle(mode: str = "both", start_now: bool = False):
             user_resume = state.is_resume_requested()
 
             # Rule: If paused, automation does NOT resume until explicitly requested
-            if session_mgr.is_paused():
+            if session_mgr.is_paused() or user_resume:
                 if user_resume:
                     state.clear_resume()
-                    log("[Nextgen Engine] User triggered explicit resume via dedicated toggle ([F8]/[PAUSE]).")
+                    log("[Nextgen Engine] User triggered explicit resume. Continuing workload from checkpoint...")
                     session_mgr.mark_active()
-                    threading.Thread(target=sched.run, daemon=True).start()
+                    worker_thread = threading.Thread(target=sched.run, daemon=True)
+                    worker_thread.start()
                 continue
 
             # Fresh session before first start: can start on idle timeout or explicit toggle
@@ -141,7 +168,8 @@ def monitor_idle(mode: str = "both", start_now: bool = False):
 
                     first_start_done = True
                     session_mgr.mark_active()
-                    threading.Thread(target=sched.run, daemon=True).start()
+                    worker_thread = threading.Thread(target=sched.run, daemon=True)
+                    worker_thread.start()
 
 from core.window_manager import bind_thread_to_interactive_desktop
 

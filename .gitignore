@@ -26,3 +26,6 @@ desktop.ini
 
 # Temporary scratch & test artifacts
 scratch/
+
+*.bin
+.session_checkpoint.bin

@@ -51,12 +51,18 @@ def hotkey(*keys):
 
 def safe_move_to(x, y):
     if state.is_stopped(): return
+    state.last_bot_input_time = time.monotonic()
     with state.injecting_key:
         try:
             import interception
             interception.move_to(int(x), int(y))
         except Exception as e:
             log(f"Driver error (move_to {x},{y}): {e}")
+    try:
+        from core.priority_engine import priority_engine
+        priority_engine.notify_bot_mouse_move(int(x), int(y))
+    except Exception:
+        pass
 
 def safe_mouse_down(btn='left'):
     if state.is_stopped(): return

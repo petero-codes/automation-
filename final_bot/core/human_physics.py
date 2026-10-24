@@ -22,6 +22,7 @@ def _ease_in_out_cubic(t):
 
 def human_mouse_move(tx, ty, duration=None):
     if state.is_stopped(): return
+    state.is_bot_moving_mouse = True
     try:
         sx, sy = get_mouse_pos()
         dist = math.hypot(tx - sx, ty - sy)
@@ -76,6 +77,9 @@ def human_mouse_move(tx, ty, duration=None):
                 safe_move_to(tx, ty)
     except Exception:
         pass
+    finally:
+        state.is_bot_moving_mouse = False
+        state.last_bot_input_time = time.monotonic()
 
 def random_mouse_drift():
     if state.is_stopped(): return

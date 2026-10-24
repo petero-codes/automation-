@@ -77,15 +77,29 @@ class Scheduler:
 
         # Check for existing valid checkpoint
         active_checkpoint = checkpoint_mgr.load_checkpoint()
-        if active_checkpoint and active_checkpoint.get("status") == "PAUSED":
-            log(f"[Scheduler] Resuming session from checkpoint: {active_checkpoint.get('workload')}")
+        first_resume_task = None
+        if active_checkpoint and (active_checkpoint.get("status") == "PAUSED" or active_checkpoint.get("payload", {}).get("status") == "PAUSED"):
+            workload = active_checkpoint.get("workload")
+            log(f"[Scheduler] Resuming session from checkpoint: {workload}")
+            for t in self.task_weights:
+                t_name = getattr(t, '__name__', str(t)).lower()
+                if workload in ("SOFTWARE_ENGINEERING", "VS_CODE") and ('software_engineering' in t_name or 'vscode' in t_name):
+                    first_resume_task = t
+                    break
+                elif workload in ("EXCEL_FINANCIAL", "FINANCIAL_MODELING") and ('financial' in t_name or 'excel' in t_name):
+                    first_resume_task = t
+                    break
 
         while not state.is_stopped():
             if time.time() - start_time > TOTAL_RUNTIME:
                 log("[Scheduler] Maximum scheduled runtime elapsed. Stopping.")
                 break
 
-            task = self.pick_next_task()
+            if first_resume_task is not None:
+                task = first_resume_task
+                first_resume_task = None
+            else:
+                task = self.pick_next_task()
             if task is None:
                 log("[Scheduler] No runnable tasks detected. Pausing automation.")
                 break

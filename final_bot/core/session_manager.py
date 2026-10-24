@@ -120,7 +120,6 @@ class SessionManager:
     def mark_active(self):
         self.state = SessionState.ACTIVE
         state.clear_stop()
-        state.clear_resume()
         state.automation_active.set()
 
     def mark_paused(self, reason: str):
@@ -128,7 +127,7 @@ class SessionManager:
         state.request_stop()
         state.automation_active.clear()
         log(f"[SessionManager] Session PAUSED: {reason}")
-        log("[SessionManager] Checkpoint preserved. Press [F8] or [PAUSE] to resume.")
+        log("[SessionManager] Checkpoint preserved. Press [F8], [Fn+F8], [F9], or press ENTER in this terminal to resume.")
 
     def mark_interrupted(self, reason: str):
         """Flags session as interrupted due to crash or unexpected exit."""

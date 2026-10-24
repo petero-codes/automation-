@@ -8,6 +8,10 @@ resume_requested_event = threading.Event()
 # Lock to distinguish bot keystrokes from human keystrokes
 injecting_key = threading.Lock()
 
+# Flags to identify bot-generated mouse and keyboard operations
+is_bot_moving_mouse = False
+last_bot_input_time = 0.0
+
 def is_stopped():
     return stop_automation_event.is_set()
 
