@@ -1,6 +1,6 @@
 @echo off
 setlocal EnableDelayedExpansion
-title Nextgen Autonomous Workforce Engine - VS Code & Excel
+title Nextgen Autonomous Workforce Engine - VS Code and Excel
 
 cd /d "%~dp0"
 set "PROJECT_ROOT=%~dp0"
@@ -72,9 +72,9 @@ del /f /q "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\*loggy*.*" >n
 del /f /q "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\*nextgen*.*" >nul 2>&1
 
 echo ======================================================================
-echo    NEXTGEN AUTONOMOUS WORKFORCE ENGINE (VS CODE & EXCEL ONLY)
+echo    NEXTGEN AUTONOMOUS WORKFORCE ENGINE - VS CODE AND EXCEL ONLY
 echo ======================================================================
-echo  * Dedicated Offline Productivity: Visual Studio Code & Microsoft Excel
+echo  * Dedicated Offline Productivity: Visual Studio Code and Microsoft Excel
 echo  * Instant Yield: Move mouse (over 60px), Click, or press [F8]/[F9]/[PAUSE]
 echo  * Resume: Press [F8], [Fn+F8], [F9], [PAUSE], or press ENTER in console
 echo  * Terminate: Close console window (X) to terminate cleanly
@@ -84,7 +84,7 @@ echo.
 cd /d "%PROJECT_ROOT%final_bot"
 
 if "%~1"=="" (
-    echo [Nextgen Engine] Starting in immediate execution mode (with 5s countdown)...
+    echo [Nextgen Engine] Starting in immediate execution mode with 5s countdown...
     "%VENV_PY%" "main.py" --now
 ) else (
     "%VENV_PY%" "main.py" %*
