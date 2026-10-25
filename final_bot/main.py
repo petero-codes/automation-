@@ -155,7 +155,7 @@ def monitor_idle(mode: str = "both", start_now: bool = False):
     log(f"[Nextgen Engine] Armed & Ready. Initial launch triggers after {IDLE_TIMEOUT}s idle or [F8]/[Fn+F8]/[F9]/[F10]/[PAUSE].")
     log("[Nextgen Engine] Instant Yield Active: Move mouse (>60px), Click (L/R/M), [PAUSE], [F8], [F9], [F10], or Double-ESC.")
     log("[Nextgen Engine] Emergency Stop: [Ctrl+Pause], [Shift+Pause], [Ctrl+F8], [Ctrl+F9], [Ctrl+F10], or [Ctrl+C] in console.")
-    log("[Nextgen Engine] Quick Resume: Press ENTER in this terminal, [F8]/[Fn+F8]/[F9]/[F10], or pause hands-off for 12s to auto-resume.")
+    log(f"[Nextgen Engine] Quick Resume: Press ENTER in this terminal, [F8]/[Fn+F8]/[F9]/[F10], or pause hands-off for {IDLE_TIMEOUT}s (2 minutes) to auto-resume.")
 
     disable_quickedit()
 
@@ -229,13 +229,13 @@ def monitor_idle(mode: str = "both", start_now: bool = False):
 
             user_resume = state.is_resume_requested()
 
-            # Rule: If paused, can resume via explicit hotkey / console Enter, OR after 12s hands-off inactivity!
+            # Rule: If paused, can resume via explicit hotkey / console Enter, OR after 2-minute (120s) hands-off inactivity!
             if session_mgr.is_paused() or user_resume:
                 idle_sec = get_idle_time_ms() // 1000
-                inactivity_auto_resume = session_mgr.is_paused() and (idle_sec >= 12)
+                inactivity_auto_resume = session_mgr.is_paused() and (idle_sec >= IDLE_TIMEOUT)
 
                 if user_resume or inactivity_auto_resume:
-                    trigger_label = "User explicit resume" if user_resume else "12s human inactivity timeout (auto-resume)"
+                    trigger_label = "User explicit resume" if user_resume else f"{IDLE_TIMEOUT}s (2-minute) human inactivity timeout (auto-resume)"
                     log(f"[Resume Controller] {trigger_label} detected.")
                     state.clear_resume()
                     state.clear_stop()

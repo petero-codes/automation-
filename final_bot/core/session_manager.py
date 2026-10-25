@@ -126,16 +126,13 @@ class SessionManager:
         self.state = SessionState.PAUSED
         state.request_stop()
         state.automation_active.clear()
-        try:
-            from core.window_manager import restore_console_window
-            restore_console_window()
-        except Exception:
-            pass
+        # Note: Do NOT pop up or restore the console window on human interrupt.
+        # Terminal announcement and logs remain fully active, but the window does not steal focus.
         log("======================================================================")
         log(">>> HUMAN HAS CONTROL <<<")
         log(f"[SessionManager] Automation yielded completely: {reason}")
         log("[SessionManager] Input state cleaned. All controls returned to human.")
-        log("[SessionManager] Checkpoint preserved. Press ENTER in this terminal, [F8]/[F9]/[F10], or pause hands-off for 12s to auto-resume.")
+        log("[SessionManager] Checkpoint preserved. Press ENTER in this terminal, [F8]/[F9]/[F10], or pause hands-off for 2 minutes to auto-resume.")
         log("======================================================================")
 
     def mark_interrupted(self, reason: str):
@@ -143,11 +140,6 @@ class SessionManager:
         self.state = SessionState.INTERRUPTED
         state.request_stop()
         state.automation_active.clear()
-        try:
-            from core.window_manager import restore_console_window
-            restore_console_window()
-        except Exception:
-            pass
         cp = self.checkpoint_mgr.load_checkpoint()
         if cp:
             workload = cp.get("workload", "UNKNOWN")

@@ -83,5 +83,42 @@ class TestLaunchMechanics(unittest.TestCase):
         self.assertTrue(res)
         mock_max.assert_called()
 
+    @patch("core.window_manager.restore_console_window")
+    def test_console_window_does_not_pop_up_on_pause(self, mock_restore):
+        """Ensures console window is NOT restored or brought forward when human control is yielded."""
+        from core.session_manager import session_mgr
+        session_mgr.mark_paused("Hardware Mouse Displacement (65px > 60px)")
+        self.assertTrue(session_mgr.is_paused())
+        mock_restore.assert_not_called()
+
+    def test_persona_matrix_and_checkpoint_preservation(self):
+        """Ensures developer personas match Nimrod specs and preserve across checkpoints."""
+        from tasks.engineering_workload import DEVELOPER_PERSONAS, get_session_developer_persona, save_vscode_checkpoint
+        from core.checkpoint_manager import checkpoint_mgr
+        from core.procedural_coder import CodingTask
+
+        # Assert persona matrix
+        persona_names = {p["name"] for p in DEVELOPER_PERSONAS}
+        self.assertIn("Burst Engineer", persona_names)
+        self.assertIn("Methodical Architect", persona_names)
+        self.assertIn("Pragmatic Developer", persona_names)
+
+        persona = get_session_developer_persona()
+        self.assertIn(persona["name"], persona_names)
+
+        # Test checkpoint preservation
+        task = CodingTask(project_name="test_proj", language="python", files={"main.py": "print('hi')\n"}, git_commits=["init"])
+        save_vscode_checkpoint(task, "C:\\test", "main.py", 0, ["print('hi')\n"], col_idx=5, persona=persona)
+        cp = checkpoint_mgr.load_checkpoint()
+        self.assertIsNotNone(cp)
+        payload = cp.get("payload", {})
+        self.assertEqual(payload.get("persona", {}).get("name"), persona["name"])
+        checkpoint_mgr.clear_checkpoint()
+
+    def test_idle_timeout_is_two_minutes(self):
+        """Ensures idle timeout is strictly configured to 120 seconds (2 minutes)."""
+        from config.settings import IDLE_TIMEOUT
+        self.assertEqual(IDLE_TIMEOUT, 120, "IDLE_TIMEOUT must be strictly 120s (2 minutes).")
+
 if __name__ == "__main__":
     unittest.main()

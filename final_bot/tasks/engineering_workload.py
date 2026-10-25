@@ -27,6 +27,42 @@ from tasks.shared import (
 
 coder_instance = ProceduralCoder()
 
+DEVELOPER_PERSONAS = [
+    {
+        "name": "Burst Engineer",
+        "description": "High-velocity bursts with fast inline code verification",
+        "wpm_range": (84, 106),
+        "thinking_pause_lines": (22, 34),
+        "thinking_pause_duration": (8.0, 20.0),
+        "reference_chance": 0.50,
+        "pre_line_delay_mult": 0.75,
+    },
+    {
+        "name": "Methodical Architect",
+        "description": "Deliberate pacing with deep structural thinking and cross-referencing",
+        "wpm_range": (56, 74),
+        "thinking_pause_lines": (14, 22),
+        "thinking_pause_duration": (18.0, 38.0),
+        "reference_chance": 0.85,
+        "pre_line_delay_mult": 1.40,
+    },
+    {
+        "name": "Pragmatic Developer",
+        "description": "Balanced full-stack development rhythm with occasional review pauses",
+        "wpm_range": (68, 88),
+        "thinking_pause_lines": (18, 28),
+        "thinking_pause_duration": (12.0, 26.0),
+        "reference_chance": 0.65,
+        "pre_line_delay_mult": 1.0,
+    }
+]
+
+def get_session_developer_persona() -> Dict[str, Any]:
+    persona = random.choice(DEVELOPER_PERSONAS)
+    log(f"[PERSONA SELECTED] Active Developer Profile: '{persona['name']}' ({persona['description']})")
+    log(f"                   Pacing: {persona['wpm_range'][0]}-{persona['wpm_range'][1]} WPM | Reference Chance: {int(persona['reference_chance']*100)}%")
+    return persona
+
 def compute_file_hash(content: str) -> str:
     """Computes SHA-256 hash of file content for state verification."""
     return hashlib.sha256(content.encode('utf-8', errors='ignore')).hexdigest()
@@ -38,6 +74,7 @@ def save_vscode_checkpoint(
     line_idx: int,
     lines: list,
     col_idx: int = 0,
+    persona: Optional[Dict[str, Any]] = None,
 ) -> None:
     """Saves granular checkpoint with last completed op, next intended op, and context snapshot."""
     file_path = os.path.join(workspace_dir, filename)
@@ -78,6 +115,7 @@ def save_vscode_checkpoint(
         "expected_context_lines": expected_context_lines,
         "files": task.files,
         "git_commits": task.git_commits,
+        "persona": persona,
         "interrupted_at": time.time(),
     }
     checkpoint_mgr.save_checkpoint("SOFTWARE_ENGINEERING", checkpoint_payload)
@@ -193,6 +231,13 @@ def task_software_engineering(duration: int) -> bool:
         except Exception as e:
             log(f"[Software Engineering] Workspace directory notice: {e}")
 
+    # Determine Active Developer Persona (Preserve checkpoint persona if resuming)
+    if is_resuming and payload.get("persona"):
+        persona = payload["persona"]
+        log(f"[PERSONA RESUMED] Preserving Active Developer Profile: '{persona['name']}' ({persona['description']})")
+    else:
+        persona = get_session_developer_persona()
+
     start_time = time.time()
     target_titles = ["Visual Studio Code", "Code"]
 
@@ -215,8 +260,9 @@ def task_software_engineering(duration: int) -> bool:
 
     # Step 3: Implement Code Files with Human Cadence & Fine-Grained Resumability
     past_resume_file = False if resume_file else True
+    file_list = list(task.files.items())
 
-    for filename, code_content in task.files.items():
+    for file_idx, (filename, code_content) in enumerate(file_list):
         if state.is_stopped() or time.time() - start_time >= duration:
             break
 
@@ -281,54 +327,133 @@ def task_software_engineering(duration: int) -> bool:
             maximize_active_window()
             time.sleep(0.3)
 
+        lines_typed_in_burst = 0
+        p_min_l, p_max_l = persona.get("thinking_pause_lines", (18, 28))
+        next_thinking_pause = random.randint(p_min_l, p_max_l)
+        delay_mult = persona.get("pre_line_delay_mult", 1.0)
+        has_referenced = False
+
         for idx in range(start_line, len(lines)):
             line = lines[idx]
             if state.is_stopped() or time.time() - start_time >= duration:
                 # Interrupted: Checkpoint exact file & line index without repeating!
                 prev_completed = idx - 1 if idx > 0 else 0
-                save_vscode_checkpoint(task, workspace_dir, filename, prev_completed, lines, col_idx=len(line))
+                save_vscode_checkpoint(task, workspace_dir, filename, prev_completed, lines, col_idx=len(line), persona=persona)
                 hotkey('ctrl', 's')
                 return False
+
+            # Cross-referencing review: Developer pauses to inspect previous module implementation
+            if (not has_referenced and file_idx > 0 and len(file_list) > 1 and
+                idx >= 7 and idx <= 12 and not state.is_stopped()):
+                has_referenced = True
+                if random.random() < persona.get("reference_chance", 0.65):
+                    prev_fn = file_list[file_idx - 1][0]
+                    log(f"[CODE REFERENCE: {persona['name']}] Referencing previous module '{prev_fn}'...")
+                    hotkey('ctrl', 'p')
+                    time.sleep(0.4)
+                    human_typing(prev_fn, wpm=130, typos=False)
+                    time.sleep(0.2)
+                    safe_press('enter')
+                    time.sleep(0.8)
+                    human_scroll('down', random.randint(2, 4))
+                    active_wait(random.uniform(2.0, 3.5))
+                    human_scroll('up', random.randint(1, 3))
+                    active_wait(random.uniform(1.0, 2.0))
+                    # Return to current working file and line
+                    hotkey('ctrl', 'p')
+                    time.sleep(0.4)
+                    human_typing(filename, wpm=130, typos=False)
+                    time.sleep(0.2)
+                    safe_press('enter')
+                    time.sleep(0.6)
+                    hotkey('ctrl', 'g')
+                    time.sleep(0.3)
+                    human_typing(f"{idx + 1}:1", wpm=130, typos=False)
+                    safe_press('enter')
+                    time.sleep(0.4)
 
             stripped = line.strip()
             # Natural code review pauses on structural boundaries
-            if stripped.startswith(('def ', 'class ', 'export ', 'interface ', 'func ')):
-                if state.stop_automation_event.wait(random.uniform(1.0, 2.5)):
+            if stripped.startswith(('def ', 'class ', 'export ', 'interface ', 'func ', '@dataclass', 'enum ')):
+                pause_t = random.uniform(0.6, 1.4) * delay_mult
+                if state.stop_automation_event.wait(pause_t):
                     prev_completed = idx - 1 if idx > 0 else 0
-                    save_vscode_checkpoint(task, workspace_dir, filename, prev_completed, lines, col_idx=len(line))
+                    save_vscode_checkpoint(task, workspace_dir, filename, prev_completed, lines, col_idx=len(line), persona=persona)
                     hotkey('ctrl', 's')
                     return False
             elif stripped == '' and random.random() < 0.35:
-                if state.stop_automation_event.wait(random.uniform(0.4, 1.2)):
+                if state.stop_automation_event.wait(random.uniform(0.08, 0.20)):
                     prev_completed = idx - 1 if idx > 0 else 0
-                    save_vscode_checkpoint(task, workspace_dir, filename, prev_completed, lines, col_idx=len(line))
+                    save_vscode_checkpoint(task, workspace_dir, filename, prev_completed, lines, col_idx=len(line), persona=persona)
                     hotkey('ctrl', 's')
                     return False
 
-            # Handle indentation via tabs
-            indent_count = len(line) - len(line.lstrip(' \t'))
-            for _ in range(indent_count // 4 if line.startswith(' ') else indent_count):
-                if state.is_stopped(): break
-                safe_press('tab')
-                time.sleep(0.04)
+            if stripped == '':
+                safe_press('enter', dwell_time=0.075)
+                time.sleep(random.uniform(0.06, 0.14))
+                lines_typed_in_burst += 1
+            else:
+                # Handle indentation via tabs/spaces
+                indent_count = len(line) - len(line.lstrip(' \t'))
+                for _ in range(indent_count // 4 if line.startswith(' ') else indent_count):
+                    if state.is_stopped(): break
+                    safe_press('tab')
+                    time.sleep(0.03)
 
-            # Type line content with authentic human typing cadence (65-95 WPM)
-            actual_content = line.strip()
-            if actual_content:
-                human_typing(actual_content, wpm=random.randint(65, 95))
+                # Type line content with authentic human typing cadence according to active persona
+                actual_content = line.strip()
+                if actual_content:
+                    wpm_low, wpm_high = persona.get("wpm_range", (65, 95))
+                    human_typing(actual_content, wpm=random.randint(wpm_low, wpm_high))
 
-            if state.is_stopped():
-                # Line completed just before yield: record this idx as last completed op
-                save_vscode_checkpoint(task, workspace_dir, filename, idx, lines, col_idx=len(line))
-                return False
+                if state.is_stopped():
+                    # Line completed just before yield: record this idx as last completed op
+                    save_vscode_checkpoint(task, workspace_dir, filename, idx, lines, col_idx=len(line), persona=persona)
+                    return False
 
-            safe_press('enter')
-            time.sleep(random.uniform(0.06, 0.20))
+                safe_press('enter', dwell_time=0.075)
+                time.sleep(random.uniform(0.06, 0.14))
+                lines_typed_in_burst += 1
 
-            # Periodic saving (Ctrl+S)
-            if idx > 0 and idx % random.randint(4, 8) == 0:
+            # Periodic saving (Ctrl+S) every 8-14 lines
+            if idx > 0 and idx % random.randint(8, 14) == 0 and not state.is_stopped():
                 hotkey('ctrl', 's')
                 time.sleep(0.3)
+
+            # -------------------------------------------------------------
+            # TIER 1: SHORT DEVELOPER THINKING PAUSES (< 2 MINUTES)
+            # Mimicking Nimrod's natural human cognitive pacing
+            # -------------------------------------------------------------
+            if lines_typed_in_burst >= next_thinking_pause and idx < len(lines) - 2 and not state.is_stopped():
+                lines_typed_in_burst = 0
+                p_min_l, p_max_l = persona.get("thinking_pause_lines", (18, 28))
+                next_thinking_pause = random.randint(p_min_l, p_max_l)
+                d_min, d_max = persona.get("thinking_pause_duration", (10.0, 25.0))
+                pause_sec = random.uniform(d_min, d_max)
+                log(f"[Thinking Pause: {persona['name']}] Developer reviewing module logic (resting {int(pause_sec)}s, <2m)...")
+                hotkey('ctrl', 's')
+                time.sleep(0.3)
+
+                start_p = time.time()
+                next_micro = time.time() + random.uniform(4.0, 8.0)
+                while time.time() - start_p < pause_sec and not state.is_stopped():
+                    if time.time() >= next_micro and not state.is_stopped():
+                        try:
+                            from core.human_physics import random_mouse_drift
+                            if random.random() < 0.4:
+                                human_scroll('up', 1)
+                                time.sleep(0.5)
+                                human_scroll('down', 1)
+                            random_mouse_drift()
+                        except Exception:
+                            pass
+                        next_micro = time.time() + random.uniform(6.0, 12.0)
+
+                    chunk = min(0.5, max(0.1, pause_sec - (time.time() - start_p)))
+                    if state.stop_automation_event.wait(chunk):
+                        prev_completed = idx if idx >= 0 else 0
+                        save_vscode_checkpoint(task, workspace_dir, filename, prev_completed, lines, col_idx=len(line), persona=persona)
+                        return False
 
         # Final save for the active file
         if not state.is_stopped():

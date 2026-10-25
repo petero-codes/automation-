@@ -361,11 +361,30 @@ def task_financial_modeling(duration: int) -> bool:
             safe_press('down')
             time.sleep(0.04)
 
-        # Natural cognitive review pause every 10-18 cells
-        if cell.row % random.randint(10, 18) == 0 and cell.col == 1:
-            if state.stop_automation_event.wait(random.uniform(1.0, 2.5)):
-                save_excel_checkpoint(model, models_dir, cell_idx, cell, model.cells)
-                return False
+        # Natural cognitive review pause every 12-20 cells
+        if cell.row > 4 and cell.row % random.randint(12, 20) == 0 and cell.col == 1:
+            pause_sec = random.uniform(8.0, 20.0)
+            log(f"[Thinking Pause: Financial Analyst] Auditing spreadsheet figures & grid logic (resting {int(pause_sec)}s, <2m)...")
+            hotkey('ctrl', 's')
+            time.sleep(0.3)
+            start_p = time.time()
+            next_micro = time.time() + random.uniform(4.0, 7.0)
+            while time.time() - start_p < pause_sec and not state.is_stopped():
+                if time.time() >= next_micro and not state.is_stopped():
+                    try:
+                        from core.human_physics import random_mouse_drift
+                        if random.random() < 0.35:
+                            human_scroll('down', 1)
+                            time.sleep(0.5)
+                            human_scroll('up', 1)
+                        random_mouse_drift()
+                    except Exception:
+                        pass
+                    next_micro = time.time() + random.uniform(5.0, 10.0)
+                chunk = min(0.5, max(0.1, pause_sec - (time.time() - start_p)))
+                if state.stop_automation_event.wait(chunk):
+                    save_excel_checkpoint(model, models_dir, cell_idx, cell, model.cells)
+                    return False
 
     # Step 4: Apply Professional Formatting & Accounting Borders
     if not state.is_stopped() and time.time() - start_time < duration:
