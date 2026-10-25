@@ -178,10 +178,20 @@ def monitor_idle(mode: str = "both", start_now: bool = False):
     if start_now:
         log("[Nextgen Engine] Immediate execution mode requested (--now).")
         state.clear_stop()
+        try:
+            from core.priority_engine import priority_engine
+            priority_engine.activate_grace_period(2.5)
+        except Exception:
+            pass
         if run_countdown(5, label="Starting workforce engine in", cancellable=True):
             log("======================================================================")
             log(">>> BOT TAKING CONTROL (Hands off mouse & keyboard) <<<")
             log("======================================================================")
+            try:
+                from core.priority_engine import priority_engine
+                priority_engine.activate_grace_period(2.5)
+            except Exception:
+                pass
             first_start_done = True
             session_mgr.mark_active()
             worker_thread = threading.Thread(target=sched.run, daemon=True)
@@ -241,7 +251,7 @@ def monitor_idle(mode: str = "both", start_now: bool = False):
                     state.clear_stop()
                     try:
                         from core.priority_engine import priority_engine
-                        priority_engine.activate_grace_period(1.0)
+                        priority_engine.activate_grace_period(2.5)
                     except Exception:
                         pass
 
@@ -249,6 +259,11 @@ def monitor_idle(mode: str = "both", start_now: bool = False):
                         log("======================================================================")
                         log(">>> BOT RESUMING AUTOMATION (Hands off mouse & keyboard) <<<")
                         log("======================================================================")
+                        try:
+                            from core.priority_engine import priority_engine
+                            priority_engine.activate_grace_period(2.5)
+                        except Exception:
+                            pass
                         session_mgr.mark_active()
                         worker_thread = threading.Thread(target=sched.run, daemon=True)
                         worker_thread.start()
@@ -275,10 +290,21 @@ def monitor_idle(mode: str = "both", start_now: bool = False):
                     else:
                         log(f"[Nextgen Engine] {IDLE_TIMEOUT}s initial inactivity reached. Launching automation...")
 
+                    try:
+                        from core.priority_engine import priority_engine
+                        priority_engine.activate_grace_period(2.5)
+                    except Exception:
+                        pass
+
                     if run_countdown(3, label="Launching workload in", cancellable=True):
                         log("======================================================================")
                         log(">>> BOT TAKING CONTROL (Hands off mouse & keyboard) <<<")
                         log("======================================================================")
+                        try:
+                            from core.priority_engine import priority_engine
+                            priority_engine.activate_grace_period(2.5)
+                        except Exception:
+                            pass
                         first_start_done = True
                         session_mgr.mark_active()
                         worker_thread = threading.Thread(target=sched.run, daemon=True)
@@ -293,8 +319,23 @@ def parse_args():
     parser.add_argument(
         "--mode",
         choices=["vscode", "excel", "both"],
-        default="both",
+        default=None,
         help="Target application mode: vscode, excel, or both (default: both)"
+    )
+    parser.add_argument(
+        "--coding",
+        action="store_true",
+        help="Launch Visual Studio Code software engineering workload"
+    )
+    parser.add_argument(
+        "--excel",
+        action="store_true",
+        help="Launch Microsoft Excel financial modeling workload"
+    )
+    parser.add_argument(
+        "--workday",
+        action="store_true",
+        help="Launch unified workday lottery (both VS Code & Excel)"
     )
     parser.add_argument(
         "--recover",
@@ -311,7 +352,24 @@ def parse_args():
         action="store_true",
         help="Start automation immediately without waiting for the idle timeout"
     )
-    return parser.parse_args()
+    parser.add_argument(
+        "--wait",
+        action="store_true",
+        help="Wait for human inactivity threshold before starting automation"
+    )
+    args = parser.parse_args()
+
+    # Map flags to mode
+    if args.coding:
+        args.mode = "vscode"
+    elif args.excel:
+        args.mode = "excel"
+    elif args.workday:
+        args.mode = "both"
+    elif args.mode is None:
+        args.mode = "both"
+
+    return args
 
 def main():
     args = parse_args()

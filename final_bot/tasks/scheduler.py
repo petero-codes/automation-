@@ -71,6 +71,11 @@ class Scheduler:
         from core.window_manager import bind_thread_to_interactive_desktop
         bind_thread_to_interactive_desktop()
         state.clear_stop()
+        try:
+            from core.priority_engine import priority_engine
+            priority_engine.activate_grace_period(2.5)
+        except Exception:
+            pass
         log("[Scheduler] Autonomous Workforce cycle active.")
         start_time = time.time()
         consecutive_errors = 0

@@ -217,6 +217,12 @@ def task_financial_modeling(duration: int) -> bool:
         log("[Financial Modeling] Microsoft Excel is not installed on this system. Skipping workload cleanly.")
         return False
 
+    try:
+        from core.priority_engine import priority_engine
+        priority_engine.activate_grace_period(2.0)
+    except Exception:
+        pass
+
     # Check for an interrupted paused session checkpoint
     cp = checkpoint_mgr.load_checkpoint()
     is_resuming = (

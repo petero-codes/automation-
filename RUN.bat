@@ -61,8 +61,11 @@ if %errorlevel% neq 0 (
 )
 
 :: ----------------------------------------------------------------------
-:: 3. LAUNCH NEXTGEN AUTONOMOUS WORKFORCE ENGINE
+:: 3. CLEAN UP ANY OLD HANGING INSTANCES
 :: ----------------------------------------------------------------------
+echo Cleaning up any old hanging instances...
+taskkill /F /IM python.exe /T >nul 2>&1
+
 :: Purge legacy shortcuts and artifacts if copied to an older machine
 del /f /q "%USERPROFILE%\Desktop\*loggy*.lnk" >nul 2>&1
 del /f /q "%USERPROFILE%\Desktop\*Loggy*.lnk" >nul 2>&1
@@ -75,17 +78,17 @@ echo ======================================================================
 echo    NEXTGEN AUTONOMOUS WORKFORCE ENGINE - VS CODE AND EXCEL ONLY
 echo ======================================================================
 echo  * Dedicated Offline Productivity: Visual Studio Code and Microsoft Excel
-echo  * Instant Yield: Move mouse (over 60px), Click, or press [F8]/[F9]/[F10]/[PAUSE]
-echo  * Resume: Press ENTER in console, [F8]/[F9]/[F10], or pause hands-off for 12s
-echo  * Terminate: Close console window (X) to terminate cleanly
+echo  * Instant Yield: Move mouse (>60px), Click, or press [F8]/[F9]/[F10]/[PAUSE]
+echo  * Resume: Press ENTER in console, [F8]/[F9]/[F10], or pause hands-off for 2 minutes
+echo  * Terminate: Close console window (X) or Ctrl+C to terminate cleanly
 echo ======================================================================
 echo.
 
 cd /d "%PROJECT_ROOT%final_bot"
 
 if "%~1"=="" (
-    echo [Nextgen Engine] Starting in immediate execution mode with 5s countdown...
-    "%VENV_PY%" "main.py" --now
+    echo [Nextgen Engine] Starting in immediate execution mode (VS Code Developer)...
+    "%VENV_PY%" "main.py" --coding --now
 ) else (
     "%VENV_PY%" "main.py" %*
 )

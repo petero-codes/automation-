@@ -29,54 +29,19 @@ def ensure_default_desktop() -> bool:
     """
     Ensures the current thread is attached to the active interactive desktop
     where application windows (VS Code, Excel) and user interaction reside.
+    Uses direct OpenInputDesktop binding matching Nimrod architecture.
     """
-    global _cached_desktop_handle
     try:
-        if _cached_desktop_handle:
-            if user32.SetThreadDesktop(_cached_desktop_handle):
-                return True
-            _cached_desktop_handle = None
-
-        # Dynamically discover desktop containing interactive application windows
-        EnumDesktopsProc = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.LPCWSTR, wintypes.LPARAM)
-        desktops = []
-        def cb_desk(lpszDesktop, lParam):
-            desktops.append(lpszDesktop)
+        GENERIC_ALL = 0x10000000
+        desk = user32.OpenInputDesktop(0, False, GENERIC_ALL)
+        if desk:
+            user32.SetThreadDesktop(desk)
+            user32.CloseDesktop(desk)
             return True
-
-        hwinsta = user32.GetProcessWindowStation()
-        user32.EnumDesktopsW(hwinsta, EnumDesktopsProc(cb_desk), 0)
-
-        for d in desktops:
-            if d in ('Winlogon', 'Disconnect'):
-                continue
-            h = user32.OpenDesktopW(d, 0, False, 0x01FF)
-            if not h:
-                continue
-            has_app = False
-            def cb_win(hwnd, _):
-                nonlocal has_app
-                t = win32gui.GetWindowText(hwnd).lower()
-                if 'visual studio code' in t or ' - code' in t or 'excel' in t or 'file explorer' in t:
-                    has_app = True
-                    return False
-                return True
-            try:
-                win32gui.EnumDesktopWindows(h, cb_win, None)
-            except Exception:
-                pass
-            if has_app:
-                _cached_desktop_handle = h
-                user32.SetThreadDesktop(h)
-                return True
-            user32.CloseDesktop(h)
-
-        h_desk = user32.OpenInputDesktop(0, False, 0x01FF)
-        if not h_desk:
-            h_desk = user32.OpenDesktopW("Default", 0, False, 0x01FF)
+        h_desk = user32.OpenDesktopW("Default", 0, False, GENERIC_ALL)
         if h_desk:
-            _cached_desktop_handle = h_desk
             user32.SetThreadDesktop(h_desk)
+            user32.CloseDesktop(h_desk)
             return True
     except Exception:
         pass
@@ -129,7 +94,12 @@ def is_vscode_window(title: str, cls: str) -> bool:
     if cls == '#32770':
         return False
     t = title.lower()
-    return "visual studio code" in t or (t.endswith(" - code") and "chrome" not in t and "brave" not in t and "edge" not in t)
+    if "visual studio code" in t:
+        return True
+    if cls == "Chrome_WidgetWin_1" and ("code" in t or "visual studio" in t):
+        if "brave" not in t and "chrome" not in t and "edge" not in t and "firefox" not in t:
+            return True
+    return t.endswith(" - code") and "chrome" not in t and "brave" not in t and "edge" not in t
 
 def is_excel_window(title: str, cls: str) -> bool:
     """Exact, hardened discriminator for Microsoft Excel windows."""
@@ -162,7 +132,10 @@ def find_target_window(fragments):
         buf = ctypes.create_unicode_buffer(length + 1)
         user32.GetWindowTextW(hwnd, buf, length + 1)
         title = buf.value
-        cls = win32gui.GetClassName(hwnd)
+        try:
+            cls = win32gui.GetClassName(hwnd)
+        except Exception:
+            cls = ""
 
         for frag in fragments:
             f_low = frag.lower()

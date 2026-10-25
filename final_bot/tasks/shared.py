@@ -106,43 +106,47 @@ def get_excel_executable() -> Optional[str]:
 
 def launch_code_process(args: list) -> subprocess.Popen:
     """
-    Launches VS Code process detached with redirected I/O to prevent console pollution
-    and guarantees it attaches to the interactive user desktop.
+    Launches VS Code process detached with redirected I/O to prevent console pollution.
+    Matches Nimrod process launch architecture without conflicting desktop binding.
     """
     flags = 0
-    si = None
     if sys.platform == "win32":
         flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
-        si = subprocess.STARTUPINFO()
-        si.lpDesktop = r"Winsta0\Default"
     return subprocess.Popen(
         args,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         stdin=subprocess.DEVNULL,
-        creationflags=flags,
-        startupinfo=si
+        creationflags=flags
     )
 
 def launch_excel_process(args: list) -> subprocess.Popen:
     """
-    Launches Excel process detached with redirected I/O to prevent console pollution
-    and guarantees it attaches to the interactive user desktop.
+    Launches Excel process detached with redirected I/O to prevent console pollution.
     """
     flags = 0
-    si = None
     if sys.platform == "win32":
         flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
-        si = subprocess.STARTUPINFO()
-        si.lpDesktop = r"Winsta0\Default"
     return subprocess.Popen(
         args,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         stdin=subprocess.DEVNULL,
-        creationflags=flags,
-        startupinfo=si
+        creationflags=flags
     )
+
+def sanitize_vscode_environment():
+    """
+    Zero-Trust VS Code Pre-Launch Sanitizer:
+    Detects and terminates orphaned headless/zombie Code.exe processes that have no visible window,
+    ensuring a fresh, interactive GUI window can spawn properly.
+    """
+    if not find_target_window(["Visual Studio Code", "Code"]):
+        try:
+            subprocess.run(["taskkill", "/f", "/im", "Code.exe"], capture_output=True, text=True)
+            time.sleep(0.3)
+        except Exception:
+            pass
 
 def sanitize_excel_environment(workspace: Optional[str] = None):
     """
@@ -178,12 +182,12 @@ def launch_or_focus_vscode(
     Bulletproof VS Code launcher and workspace/file restoration engine:
     1. Checks if a real Visual Studio Code window is already visible on the interactive desktop.
     2. If running: reuses existing window via `code -r <workspace_dir>` and brings to front.
-    3. If not running: directly executes `code <workspace_dir>` via detached subprocess.
+    3. If not running: sanitizes headless zombies, executes `code <workspace_dir>` via detached subprocess.
     4. Ensures file exists on disk and opens via `code -r -g <file_path>:<line>:<col>`.
     5. Maximizes active window full-screen.
     """
     ensure_default_desktop()
-    target_titles = ["Visual Studio Code"]
+    target_titles = ["Visual Studio Code", "Code"]
     vscode_exe = get_vscode_executable()
     if not vscode_exe:
         log("[Software Engineering] VS Code executable not detected on machine.")
@@ -222,8 +226,8 @@ def launch_or_focus_vscode(
         return True
 
     # Fresh launch
+    sanitize_vscode_environment()
     log(f"[Software Engineering] Launching clean Visual Studio Code via {vscode_exe}...")
-    minimize_console_window()
     try:
         if file_path and os.path.isfile(file_path):
             launch_code_process([vscode_exe, workspace_dir, "-g", f"{file_path}:{line}:{col}"])
@@ -236,7 +240,7 @@ def launch_or_focus_vscode(
         return False
 
     # Wait for window to initialize, focus, and maximize
-    if wait_for_window(target_titles, timeout=18.0):
+    if wait_for_window(target_titles, timeout=20.0):
         time.sleep(1.0)
         maximize_active_window()
         log("Verification Success: Visual Studio Code opened and maximized in foreground.")
@@ -258,7 +262,6 @@ def launch_or_focus_excel(workbook_path: Optional[str] = None) -> bool:
     target_titles = ["Excel", "Microsoft Excel"]
     workspace = os.path.dirname(workbook_path) if workbook_path else None
     sanitize_excel_environment(workspace)
-    minimize_console_window()
 
     excel_exe = get_excel_executable()
     if not excel_exe:
