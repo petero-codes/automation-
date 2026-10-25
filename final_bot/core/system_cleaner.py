@@ -75,6 +75,8 @@ def purge_legacy_system_artifacts() -> List[str]:
         base_dir / "idle_firefox.log",
         base_dir / ".test_checkpoint.bin",
         base_dir / ".session_lifecycle_test.bin",
+        parent_dir / "startup_crash.log",
+        base_dir / "startup_crash.log",
     ]
 
     for f in legacy_files:
@@ -85,6 +87,38 @@ def purge_legacy_system_artifacts() -> List[str]:
                 log(f"[SystemCleaner] Removed obsolete system file: {f.name}")
         except Exception as e:
             log(f"[SystemCleaner] Notice removing {f}: {e}")
+
+    # 4. Clean Stale Temporary Excel Lock Files & Dangling Temp Artifacts
+    stale_dirs = [
+        os.path.join(user_profile, "Desktop"),
+        os.path.join(user_profile, "Desktop", "Workspaces"),
+        os.path.join(user_profile, "Desktop", "Financial_Models"),
+    ]
+    for s_dir in stale_dirs:
+        if os.path.isdir(s_dir):
+            for pattern in ["~$*.xlsx", "*.tmp"]:
+                for stale in glob.glob(os.path.join(s_dir, pattern)):
+                    try:
+                        if os.path.isfile(stale):
+                            os.remove(stale)
+                            purged.append(stale)
+                            log(f"[SystemCleaner] Purged stale temporary file: {os.path.basename(stale)}")
+                    except Exception:
+                        pass
+
+    # 5. Prevent Log Bloat and Disk I/O Lag (Keep log healthy and fast)
+    main_log = base_dir / "idle_automation.log"
+    if main_log.is_file():
+        try:
+            if main_log.stat().st_size > 512 * 1024:  # > 512 KB
+                with open(main_log, "r", encoding="utf-8", errors="ignore") as lf:
+                    lines = lf.readlines()
+                recent_lines = lines[-250:] if len(lines) > 250 else lines
+                with open(main_log, "w", encoding="utf-8") as lf:
+                    lf.writelines(recent_lines)
+                log("[SystemCleaner] Compacted idle_automation.log to recent 250 entries to eliminate disk lag.")
+        except Exception:
+            pass
 
     if purged:
         log(f"[SystemCleaner] Purged {len(purged)} legacy artifact(s). System environment updated cleanly.")

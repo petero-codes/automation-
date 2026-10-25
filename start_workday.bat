@@ -16,6 +16,7 @@ if not exist "%VENV_PY%" (
 
 echo Cleaning up any old hanging instances...
 taskkill /F /IM python.exe /T >nul 2>&1
+taskkill /F /IM excel.exe /T >nul 2>&1
 
 echo.
 echo ===============================================================================

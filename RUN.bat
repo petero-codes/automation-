@@ -61,16 +61,21 @@ if %errorlevel% neq 0 (
 )
 
 :: ----------------------------------------------------------------------
-:: 3. CLEAN UP ANY OLD HANGING INSTANCES
+:: 3. CLEAN UP ANY OLD HANGING INSTANCES & STALE TEMP FILES
 :: ----------------------------------------------------------------------
-echo Cleaning up any old hanging instances...
+echo Cleaning up any old hanging instances and temporary files...
 taskkill /F /IM python.exe /T >nul 2>&1
+taskkill /F /IM excel.exe /T >nul 2>&1
 
 :: Purge legacy shortcuts and artifacts if copied to an older machine
 del /f /q "%USERPROFILE%\Desktop\*loggy*.lnk" >nul 2>&1
 del /f /q "%USERPROFILE%\Desktop\*Loggy*.lnk" >nul 2>&1
 del /f /q "%USERPROFILE%\Desktop\*nextgen*.lnk" >nul 2>&1
 del /f /q "%USERPROFILE%\Desktop\*Nextgen*.lnk" >nul 2>&1
+del /f /q "%USERPROFILE%\Desktop\~$*.xlsx" >nul 2>&1
+del /f /q "%USERPROFILE%\Desktop\Workspaces\~$*.xlsx" >nul 2>&1
+del /f /q "%USERPROFILE%\Desktop\Financial_Models\~$*.xlsx" >nul 2>&1
+del /f /q "%PROJECT_ROOT%final_bot\startup_crash.log" >nul 2>&1
 del /f /q "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\*loggy*.*" >nul 2>&1
 del /f /q "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\*nextgen*.*" >nul 2>&1
 
@@ -78,6 +83,7 @@ echo ======================================================================
 echo    NEXTGEN AUTONOMOUS WORKFORCE ENGINE - VS CODE AND EXCEL ONLY
 echo ======================================================================
 echo  * Dedicated Offline Productivity: Visual Studio Code and Microsoft Excel
+echo  * Workday Lottery Pool: Software Engineering (VS Code) + Financial Analysis (Excel)
 echo  * Instant Yield: Move mouse (>60px), Click, or press [F8]/[F9]/[F10]/[PAUSE]
 echo  * Resume: Press ENTER in console, [F8]/[F9]/[F10], or pause hands-off for 2 minutes
 echo  * Terminate: Close console window (X) or Ctrl+C to terminate cleanly
@@ -87,8 +93,8 @@ echo.
 cd /d "%PROJECT_ROOT%final_bot"
 
 if "%~1"=="" (
-    echo [Nextgen Engine] Starting in immediate execution mode (VS Code Developer)...
-    "%VENV_PY%" "main.py" --coding --now
+    echo [Nextgen Engine] Starting in immediate execution mode (Unified Workday: VS Code & Excel)...
+    "%VENV_PY%" "main.py" --workday --now
 ) else (
     "%VENV_PY%" "main.py" %*
 )
