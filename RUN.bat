@@ -84,7 +84,7 @@ echo    NEXTGEN AUTONOMOUS WORKFORCE ENGINE - VS CODE AND EXCEL ONLY
 echo ======================================================================
 echo  * Dedicated Offline Productivity: Visual Studio Code and Microsoft Excel
 echo  * Workday Lottery Pool: Software Engineering (VS Code) + Financial Analysis (Excel)
-echo  * Instant Yield: Move mouse (>60px), Click, or press [F8]/[F9]/[F10]/[PAUSE]
+echo  * Instant Yield: Move mouse (^>60px), Click, or press [F8]/[F9]/[F10]/[PAUSE]
 echo  * Resume: Press ENTER in console, [F8]/[F9]/[F10], or pause hands-off for 2 minutes
 echo  * Terminate: Close console window (X) or Ctrl+C to terminate cleanly
 echo ======================================================================
@@ -93,7 +93,7 @@ echo.
 cd /d "%PROJECT_ROOT%final_bot"
 
 if "%~1"=="" (
-    echo [Nextgen Engine] Starting in immediate execution mode (Unified Workday: VS Code & Excel)...
+    echo [Nextgen Engine] Starting in immediate execution mode - Unified Workday: VS Code and Excel...
     "%VENV_PY%" "main.py" --workday --now
 ) else (
     "%VENV_PY%" "main.py" %*
